@@ -21,15 +21,12 @@ from typing import Any, Optional
 
 from pyhap.accessory_driver import AccessoryDriver
 
-from homekit_bridge.ccu3.adapter import Ccu3Adapter
-from homekit_bridge.ccu3.callback import CallbackServer
-from homekit_bridge.ccu3.client import Ccu3Client
 from homekit_bridge.config import ConfigStore
 from homekit_bridge.events import EventBus
 from homekit_bridge.hap.bridge import HomeKitBridge
 from homekit_bridge.models import PVData
+from homekit_bridge.mqttsource import MqttSource
 from homekit_bridge.settings import Settings
-from homekit_bridge.solaredge.adapter import SolarEdgeAdapter
 from homekit_bridge.web.api import create_app
 
 logger = logging.getLogger(__name__)
@@ -63,11 +60,39 @@ class _SolarState:
 # ---------------------------------------------------------------------------
 
 class _BridgeState:
-    def __init__(self) -> None:
-        self.paired: bool = False
+    def __init__(
+        self,
+        hap_driver: Optional[AccessoryDriver] = None,
+        ccu3_adapter: Optional[Any] = None,
+    ) -> None:
+        self.hap_driver = hap_driver
+        self.ccu3_adapter = ccu3_adapter
         self.accessory_count: int = 0
-        self.ccu3_connected: bool = False
         self.solaredge_connected: bool = False
+
+    @property
+    def paired(self) -> bool:
+        """Live HomeKit pairing state, read from the HAP driver.
+
+        HAP-python tracks paired clients in ``driver.state.paired``; reading it
+        here means /api/status reflects reality instead of a stale flag.
+        """
+        if self.hap_driver is None:
+            return False
+        try:
+            return bool(self.hap_driver.state.paired)
+        except Exception:
+            return False
+
+    @property
+    def ccu3_connected(self) -> bool:
+        """Live CCU3 connection state, read from the adapter's init status."""
+        if self.ccu3_adapter is None:
+            return False
+        try:
+            return bool(self.ccu3_adapter.connected)
+        except Exception:
+            return False
 
 
 # ---------------------------------------------------------------------------
@@ -82,8 +107,7 @@ class AppComponents:
     settings: Settings
     hap_bridge: HomeKitBridge
     hap_driver: AccessoryDriver
-    ccu3_adapter: Ccu3Adapter
-    solaredge_adapter: SolarEdgeAdapter
+    ccu3_adapter: Any
     solar_state: _SolarState
     bridge_state: _BridgeState
     stop_event: threading.Event = field(default_factory=threading.Event)
@@ -113,28 +137,18 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
     bridge_state = _BridgeState()
     stop_event = threading.Event()
 
-    # CCU3 adapter
-    ccu3_client_raw = fakes.get("ccu3_client") or Ccu3Client(host=settings.ccu3_host)
-    callback_srv = fakes.get("callback_server") or CallbackServer(
-        on_event=lambda *a: None,  # wired properly by adapter.start()
-        host="0.0.0.0",
-        port=9292,
+    # MQTT source — replaces the embedded CCU3 + SolarEdge adapters.
+    mqtt_client = fakes.get("mqtt_client")
+    mqtt_source = MqttSource(
+        bus,
+        host=settings.mqtt_host,
+        port=settings.mqtt_port,
+        client=mqtt_client,
     )
-    ccu3_adapter = Ccu3Adapter(
-        client=ccu3_client_raw,
-        callback_server=callback_srv,
-        bus=bus,
-    )
+    ccu3_adapter = mqtt_source  # drop-in: same interface used downstream
+    bridge_state.ccu3_adapter = mqtt_source
 
-    # SolarEdge adapter
-    modbus_client = fakes.get("modbus_client")
-    solaredge_adapter = SolarEdgeAdapter(
-        host=settings.solaredge_host,
-        unit_id=settings.solaredge_unit_id,
-        client=modbus_client,  # None in production → builds real ModbusTcpClient
-    )
-
-    # Subscribe solar events → update shared solar_state
+    # Solar events → shared solar_state for the web API
     def _on_solar(pv: PVData) -> None:
         solar_state.pv = pv
         bridge_state.solaredge_connected = pv.available
@@ -144,6 +158,8 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
     # HAP driver — port=0 when fakes are injected (tests), real port otherwise
     hap_port = 0 if fakes else _HAP_PORT
     hap_driver = AccessoryDriver(port=hap_port, persist_file=hap_persist)
+    # Let /api/status report the real pairing state from the driver.
+    bridge_state.hap_driver = hap_driver
 
     # Build HAP bridge
     hk_bridge = HomeKitBridge(
@@ -173,7 +189,6 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
         hap_bridge=hk_bridge,
         hap_driver=hap_driver,
         ccu3_adapter=ccu3_adapter,
-        solaredge_adapter=solaredge_adapter,
         solar_state=solar_state,
         bridge_state=bridge_state,
         stop_event=stop_event,
@@ -202,26 +217,8 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    # Start CCU3 adapter (callback server + init registration)
-    ccu3_thread = threading.Thread(
-        target=components.ccu3_adapter.start,
-        name="ccu3-adapter",
-        daemon=True,
-    )
-    ccu3_thread.start()
-
-    # Start SolarEdge poll thread
-    solar_thread = threading.Thread(
-        target=components.solaredge_adapter.poll,
-        kwargs={
-            "bus": components.bus,
-            "interval": 5.0,
-            "stop_event": stop_event,
-        },
-        name="solaredge-poll",
-        daemon=True,
-    )
-    solar_thread.start()
+    # Start MQTT (background network loop) — feeds CCU3 + solar events onto the bus
+    components.ccu3_adapter.start()
 
     # Log HAP pairing info
     driver = components.hap_driver
