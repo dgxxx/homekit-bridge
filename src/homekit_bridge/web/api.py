@@ -25,7 +25,6 @@ import pathlib
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -131,11 +130,9 @@ def create_app(
 
     @app.get("/api/devices", response_model=list[DeviceMappingOut], dependencies=api_deps)
     async def get_devices() -> list[dict]:
-        # Merge: all known channels from CCU3 discovery + store mappings
-        # For now return whatever is in the config store (CCU3 discovery
-        # is kicked off by the adapter; this endpoint just reads the DB).
-        mappings = config_store.list_exported()
-        # Also include non-exported stored mappings so the UI can manage them
+        # Return all stored channel mappings (exported and non-exported) so the
+        # UI can manage them.  CCU3 discovery is handled by the adapter; the
+        # results land in the DB before the user opens this page.
         all_rows = _all_mappings(config_store)
         result = []
         for row in all_rows:

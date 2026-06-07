@@ -42,7 +42,7 @@ const state = {
   /** @type {null|{power_w:number, energy_today_kwh:number, battery_pct:number|null, producing:boolean, available:boolean}} */
   solar: null,
 
-  /** @type {null|{paired:boolean, active_devices:number, ccu3_connected:boolean, solaredge_connected:boolean}} */
+  /** @type {null|{paired:boolean, accessory_count:number, ccu3_connected:boolean, solaredge_connected:boolean}} */
   status: null,
 
   /** @type {Array<{address:string, type:string, name:string, exported:boolean, hk_type:string|null}>} */
@@ -191,7 +191,7 @@ function renderStatusTiles() {
     tiles.push({
       icon: "&#x1F4F1;",
       label: "Aktive Geraete",
-      value: String(status.active_devices ?? "—"),
+      value: String(status.accessory_count ?? "—"),
       unit: "Geraete",
       mod: "",
     });
@@ -354,7 +354,7 @@ async function refreshDevices() {
   if (!tbody) return;
 
   tbody.innerHTML = `
-    <tr><td colspan="6" class="state-message">
+    <tr><td colspan="5" class="state-message">
       <span class="spinner" aria-hidden="true"></span> Lade Geraete&#8230;
     </td></tr>`;
 
@@ -362,7 +362,7 @@ async function refreshDevices() {
     state.devices = await fetchDevices();
   } catch (err) {
     tbody.innerHTML = `
-      <tr><td colspan="6" class="state-message">
+      <tr><td colspan="5" class="state-message">
         Fehler beim Laden: ${escHtml(err.message)}
       </td></tr>`;
     return;
@@ -401,7 +401,7 @@ function renderDeviceTable(devices) {
 
   if (devices.length === 0) {
     tbody.innerHTML =
-      '<tr><td colspan="6" class="state-message">Keine Geraete gefunden.</td></tr>';
+      '<tr><td colspan="5" class="state-message">Keine Geraete gefunden.</td></tr>';
     return;
   }
 
@@ -413,11 +413,12 @@ function renderDeviceTable(devices) {
 
 /**
  * Build the HTML string for one device row.
- * @param {{ address:string, type:string, name:string, exported:boolean, hk_type:string|null }} device
+ * API returns {address:string, exported:bool, hk_type:string|null, name:string}.
+ * @param {{ address:string, name:string, exported:boolean, hk_type:string|null }} device
  * @returns {string}
  */
 function buildDeviceRow(device) {
-  const { address, type, name, exported, hk_type } = device;
+  const { address, name, exported, hk_type } = device;
   const safeAddr = escHtml(address);
 
   const typeOptions = HK_TYPES.map(t => {
@@ -438,7 +439,6 @@ function buildDeviceRow(device) {
         />
       </td>
       <td><code class="address">${safeAddr}</code></td>
-      <td>${escHtml(type)}</td>
       <td>
         <select
           class="hktype-select"
@@ -618,7 +618,7 @@ function updateNavStatus() {
       ? '<span class="dot dot--ok" aria-hidden="true"></span>'
       : '<span class="dot dot--error" aria-hidden="true"></span>';
     parts.push(`${dot} CCU3`);
-    parts.push(`${state.status.active_devices ?? 0} Geraete`);
+    parts.push(`${state.status.accessory_count ?? 0} Geraete`);
   }
 
   if (state.solar && state.solar.available) {
