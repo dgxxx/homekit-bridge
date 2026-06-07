@@ -121,18 +121,30 @@ nicht mitgeprüft wurde.
 
 ---
 
-## Phasenstatus
+## Projektstatus
 
-| # | Phase | Plan-Tasks | Status |
-|---|---|---|---|
-| 0-1 | Scaffold + Core (models, settings, events, SQLite) | 0–4 | **in Arbeit** (Task #11) |
-| 2 | CCU3-Adapter (XML-RPC + Callback + Reconnect) | 5–7 | ausstehend (Task #2) |
-| 3 | SolarEdge-Adapter (Modbus TCP) | 8 | ausstehend (Task #3) |
-| 4 | Device-Mapper (rein, kein I/O) | 9–10 | ausstehend (Task #4) |
-| 5 | HAP-Bridge (Accessory-Factories + Wiring) | 11–12 | ausstehend (Task #5) |
-| 6 | Web-API (FastAPI) | 13 | ausstehend (Task #6) |
-| 7 | Frontend (Vanilla-JS: Dashboard + Tabelle + Solar) | 14–16 | **in Arbeit** (Task #7, #12) |
-| 8 | Integration, Docker, README | 17–19 | ausstehend (Task #8) |
+**v1 feature-complete** — Stand 2026-06-07, HEAD `9d24813`, vom Reviewer freigegeben.
+
+- 119 Tests grün (`pytest -q`), `ruff check` sauber, Working Tree clean.
+- Alle 8 Phasen implementiert + Discovery-Merge-Fix (#15) + 3 Minor-Review-Punkte
+  (`ConfigStore.list_all`, `/api/solar` None-Fallback, 422-Test) erledigt.
+- **Noch nicht gegen echte Hardware verifiziert.** Beim ersten Live-Connect prüfen:
+  - SolarEdge: Modbus-Register-Mapping (`registers.py`) gegen echten Wechselrichter abgleichen.
+  - CCU3: exakte Homematic-Kanal-Parameter (`STATE`, `LEVEL`, …) im Mapper verifizieren.
+
+### Phasenstatus
+
+| # | Phase | Status |
+|---|---|---|
+| 0-1 | Scaffold + Core (models, settings, events, SQLite) | abgeschlossen |
+| 2 | CCU3-Adapter (XML-RPC + Callback + Reconnect) | abgeschlossen |
+| 3 | SolarEdge-Adapter (Modbus TCP) | abgeschlossen |
+| 4 | Device-Mapper (rein, kein I/O) | abgeschlossen |
+| 5 | HAP-Bridge (Accessory-Factories + Wiring) | abgeschlossen |
+| 6 | Web-API (FastAPI) | abgeschlossen |
+| 7 | Frontend (Vanilla-JS: Dashboard + Tabelle + Solar) | abgeschlossen |
+| 8 | Integration, Docker, README | abgeschlossen |
+| — | Discovery-Merge-Fix + Minor-Review-Punkte | abgeschlossen |
 
 ---
 
