@@ -46,3 +46,26 @@ def test_system_list_methods():
         assert "event" in methods
     finally:
         server.stop()
+
+
+def test_on_event_error_does_not_crash_server():
+    """A raising on_event handler must not take down the callback server."""
+    call_count = [0]
+
+    def bad_handler(address, key, value):
+        call_count[0] += 1
+        raise RuntimeError("handler exploded")
+
+    server = CallbackServer(on_event=bad_handler, host="127.0.0.1", port=0)
+    server.start()
+    try:
+        proxy = xmlrpc.client.ServerProxy(server.url)
+        # First call raises in on_event — server must still return ""
+        result = proxy.event("iface_id", "OEQ1:1", "STATE", True)
+        assert result == ""
+        # Second call proves the server is still alive
+        result = proxy.event("iface_id", "OEQ1:1", "STATE", False)
+        assert result == ""
+        assert call_count[0] == 2
+    finally:
+        server.stop()

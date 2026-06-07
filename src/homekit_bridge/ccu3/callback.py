@@ -31,7 +31,8 @@ class CallbackServer:
 
     @property
     def url(self) -> str:
-        assert self._server is not None, "server not started"
+        if self._server is None:
+            raise RuntimeError("CallbackServer.url accessed before start()")
         host, port = self._server.server_address
         return f"http://{host}:{port}"
 

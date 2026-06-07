@@ -2,7 +2,7 @@ import logging
 import time as _time
 from typing import Any, Callable
 
-from homekit_bridge.ccu3.client import Ccu3Client, Ccu3Error
+from homekit_bridge.ccu3.client import Ccu3Client
 from homekit_bridge.ccu3.callback import CallbackServer
 from homekit_bridge.events import EventBus
 
@@ -85,7 +85,7 @@ class Ccu3Adapter:
             try:
                 self._client.init(self._callback_server.url, self._interface_id)
                 return  # success
-            except (Ccu3Error, Exception) as exc:
+            except Exception as exc:
                 attempt += 1
                 logger.warning(
                     "CCU3 init failed (attempt %d): %s — retrying in %.1fs",
