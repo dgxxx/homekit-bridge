@@ -34,3 +34,19 @@ def test_hktype_none_serializes_and_deserializes(tmp_path):
     store.set_mapping("Z:1", exported=False, hk_type=None, name="NoType")
     m = store.get_mapping("Z:1")
     assert m["hk_type"] is None
+
+
+def test_unknown_hktype_in_db_returns_none(tmp_path):
+    """A stale or manually-edited DB value that is not a valid HKType should
+    not crash the application — it must be silently treated as None."""
+    store = ConfigStore(tmp_path / "c.db")
+    # Write a value directly to the DB that is not a valid HKType
+    with store._lock:
+        store._conn.execute(
+            "INSERT INTO mappings (address, exported, hk_type, name) VALUES (?, ?, ?, ?)",
+            ("BAD:1", 1, "no_longer_valid_type", "Stale"),
+        )
+        store._conn.commit()
+    m = store.get_mapping("BAD:1")
+    assert m is not None
+    assert m["hk_type"] is None   # unknown value → None, not ValueError
