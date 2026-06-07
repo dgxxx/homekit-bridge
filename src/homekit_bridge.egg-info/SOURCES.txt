@@ -1,0 +1,7 @@
+pyproject.toml
+src/homekit_bridge/__init__.py
+src/homekit_bridge.egg-info/PKG-INFO
+src/homekit_bridge.egg-info/SOURCES.txt
+src/homekit_bridge.egg-info/dependency_links.txt
+src/homekit_bridge.egg-info/requires.txt
+src/homekit_bridge.egg-info/top_level.txt

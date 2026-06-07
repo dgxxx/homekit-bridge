@@ -1,0 +1,1 @@
+- [Homekit Projekt Überblick](project-homekit-overview.md) — Ziel, Architektur, Phasen, Scope v1 (SolarEdge Modbus + CCU3 XML-RPC)

@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  homekit:
+    build: .
+    container_name: homekit
+    restart: always
+    ports:
+      - "443:8095"
+    volumes:
+      - ./data:/code/data
+    environment:
+      LOGLEVEL: "DEBUG"
