@@ -4,12 +4,7 @@
 any real network ports.  No HAP mDNS, no Uvicorn, no Modbus.
 """
 
-import os
-import pathlib
-import pytest
-
 from homekit_bridge.__main__ import build, AppComponents
-from homekit_bridge.models import HKType
 
 
 # ---------------------------------------------------------------------------
