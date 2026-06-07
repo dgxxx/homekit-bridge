@@ -1,13 +1,16 @@
-version: '3'
+version: "3.9"
 
 services:
-  homekit:
+  homekit-bridge:
     build: .
-    container_name: homekit
-    restart: always
-    ports:
-      - "443:8095"
+    container_name: homekit-bridge
+    restart: unless-stopped
+    # host network is required for HAP mDNS/Bonjour discovery and for the
+    # CCU3 XML-RPC callback server to be reachable from the CCU3
+    network_mode: host
     volumes:
-      - ./data:/code/data
+      - ./state:/app/state
+    env_file:
+      - .env
     environment:
-      LOGLEVEL: "DEBUG"
+      STATE_DIR: /app/state
