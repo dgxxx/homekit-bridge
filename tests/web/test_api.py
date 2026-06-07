@@ -9,7 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from homekit_bridge.config import ConfigStore
-from homekit_bridge.models import HKType, PVData
+from homekit_bridge.models import Channel, Device, HKType, PVData
 from homekit_bridge.settings import Settings
 from homekit_bridge.web.api import create_app
 
@@ -245,3 +245,119 @@ async def test_health_unprotected_even_with_password(auth_app):
     async with AsyncClient(transport=ASGITransport(app=auth_app), base_url="http://test") as c:
         r = await c.get("/health")
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# GET /api/devices — CCU3 discovery merged with config
+# ---------------------------------------------------------------------------
+
+def _make_app_with_ccu3(store, solar, bridge_state, devices):
+    adapter = FakeCcu3Adapter(devices=devices)
+    return create_app(
+        config_store=store,
+        ccu3_adapter=adapter,
+        solar_state=solar,
+        bridge_state=bridge_state,
+        settings=_make_settings(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_devices_shows_discovered_ccu3_channels(store, solar, bridge_state):
+    """Channels discovered from CCU3 appear even without a config-store entry."""
+    device = Device(
+        address="OEQ1",
+        model="HM-LC-Sw1",
+        channels=[Channel(address="OEQ1:1", type="SWITCH", name="Channel 1")],
+    )
+    app = _make_app_with_ccu3(store, solar, bridge_state, [device])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/devices")
+    data = r.json()
+    assert r.status_code == 200
+    assert len(data) == 1
+    assert data[0]["address"] == "OEQ1:1"
+    assert data[0]["type"] == "SWITCH"
+    assert data[0]["exported"] is False        # default: not yet exported
+    assert data[0]["hk_type"] is None          # no config override yet
+    assert data[0]["suggested_hk_type"] == "switch"  # auto-detected
+
+
+@pytest.mark.asyncio
+async def test_get_devices_config_overrides_discovery(store, solar, bridge_state):
+    """Config-store overrides (name, hk_type, exported) take priority over CCU3 defaults."""
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.OUTLET, name="My Outlet")
+    device = Device(
+        address="OEQ1",
+        model="HM-LC-Sw1",
+        channels=[Channel(address="OEQ1:1", type="SWITCH", name="Channel 1")],
+    )
+    app = _make_app_with_ccu3(store, solar, bridge_state, [device])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/devices")
+    data = r.json()
+    assert len(data) == 1
+    row = data[0]
+    assert row["exported"] is True
+    assert row["hk_type"] == "outlet"          # config override wins
+    assert row["name"] == "My Outlet"          # config name wins
+    assert row["suggested_hk_type"] == "switch"  # auto from raw HM type
+
+
+@pytest.mark.asyncio
+async def test_get_devices_config_only_channels_included(store, solar, bridge_state):
+    """Channels in config but not discovered (e.g. CCU3 offline) are still returned."""
+    store.set_mapping("OLD:1", exported=True, hk_type=HKType.SWITCH, name="Old Device")
+    # CCU3 returns nothing (no devices discovered this session)
+    app = _make_app_with_ccu3(store, solar, bridge_state, [])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/devices")
+    data = r.json()
+    assert any(d["address"] == "OLD:1" for d in data)
+
+
+@pytest.mark.asyncio
+async def test_get_devices_ccu3_failure_returns_config_only(store, solar, bridge_state):
+    """If list_devices() raises, endpoint falls back to config-store (no crash, 200)."""
+    class FailingCcu3:
+        def list_devices(self):
+            raise ConnectionError("CCU3 offline")
+
+        def set_value(self, a, k, v):
+            pass
+
+    store.set_mapping("OEQ2:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    app = create_app(
+        config_store=store,
+        ccu3_adapter=FailingCcu3(),
+        solar_state=solar,
+        bridge_state=bridge_state,
+        settings=_make_settings(),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/devices")
+    assert r.status_code == 200
+    data = r.json()
+    assert any(d["address"] == "OEQ2:1" for d in data)
+
+
+@pytest.mark.asyncio
+async def test_get_devices_no_duplicate_when_in_both(store, solar, bridge_state):
+    """A channel present in both CCU3 discovery and config-store appears once only."""
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    device = Device(
+        address="OEQ1",
+        model="HM-LC-Sw1",
+        channels=[Channel(address="OEQ1:1", type="SWITCH", name="Channel 1")],
+    )
+    app = _make_app_with_ccu3(store, solar, bridge_state, [device])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/devices")
+    data = r.json()
+    addresses = [d["address"] for d in data]
+    assert addresses.count("OEQ1:1") == 1

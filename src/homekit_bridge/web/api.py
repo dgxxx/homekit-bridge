@@ -7,7 +7,7 @@ can be tested without real adapters.
 Routes
 ------
 GET  /health                    — liveness probe, always 200, no auth
-GET  /api/devices               — list of all known channel mappings
+GET  /api/devices               — merged list: CCU3 discovery + config-store overrides
 POST /api/devices/{address}     — upsert channel mapping (export / hk_type / name)
 GET  /api/solar                 — latest PVData snapshot
 GET  /api/status                — bridge + connectivity summary
@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from homekit_bridge.config import ConfigStore
+from homekit_bridge.mapper.device_mapper import auto_hk_type
 from homekit_bridge.models import HKType, PVData
 from homekit_bridge.settings import Settings
 
@@ -49,8 +50,10 @@ class DeviceMappingIn(BaseModel):
 
 class DeviceMappingOut(BaseModel):
     address: str
+    type: str = ""                   # raw Homematic channel type (e.g. "SWITCH")
     exported: bool
-    hk_type: Optional[str] = None
+    hk_type: Optional[str] = None    # config override
+    suggested_hk_type: Optional[str] = None  # auto-detected from HM type
     name: str
 
 
@@ -130,19 +133,7 @@ def create_app(
 
     @app.get("/api/devices", response_model=list[DeviceMappingOut], dependencies=api_deps)
     async def get_devices() -> list[dict]:
-        # Return all stored channel mappings (exported and non-exported) so the
-        # UI can manage them.  CCU3 discovery is handled by the adapter; the
-        # results land in the DB before the user opens this page.
-        all_rows = _all_mappings(config_store)
-        result = []
-        for row in all_rows:
-            result.append({
-                "address": row["address"],
-                "exported": row["exported"],
-                "hk_type": row["hk_type"].value if row["hk_type"] else None,
-                "name": row["name"],
-            })
-        return result
+        return _merged_device_list(config_store, ccu3_adapter)
 
     @app.post("/api/devices/{address}", dependencies=api_deps)
     async def post_device(address: str, body: DeviceMappingIn) -> dict:
@@ -205,16 +196,62 @@ def create_app(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _all_mappings(store: ConfigStore) -> list[dict]:
-    """Return every row in the mappings table (exported + non-exported).
-
-    Uses the store's internal connection but delegates deserialization to the
-    same ``_row_to_dict`` helper that ``get_mapping`` and ``list_exported`` use.
-    """
+def _all_config_mappings(store: ConfigStore) -> dict[str, dict]:
+    """Return all config-store rows as {address: row_dict}."""
     from homekit_bridge.config import _row_to_dict  # same package — not a layer violation
 
     with store._lock:
         rows = store._conn.execute(
             "SELECT * FROM mappings ORDER BY address"
         ).fetchall()
-    return [_row_to_dict(row) for row in rows]
+    return {row["address"]: _row_to_dict(row) for row in rows}
+
+
+def _merged_device_list(store: ConfigStore, ccu3_adapter: Any) -> list[dict]:
+    """Merge CCU3-discovered channels with config-store overrides.
+
+    Priority rules per channel:
+    - ``type``: always from CCU3 discovery (raw HM type); empty string if config-only
+    - ``name``: config override if set, else CCU3 channel name, else address
+    - ``exported``: config value if present, else False
+    - ``hk_type``: explicit config override (may be None)
+    - ``suggested_hk_type``: auto_hk_type(raw_hm_type) — helps the UI pre-fill
+    - Config-only channels (no CCU3 discovery entry) are still included as-is
+    - If CCU3 discovery fails, falls back to config-only (graceful)
+    """
+    config: dict[str, dict] = _all_config_mappings(store)
+
+    # Build address → (hm_type, ccu3_name) from CCU3 discovery
+    discovered: dict[str, tuple[str, str]] = {}
+    try:
+        for device in ccu3_adapter.list_devices():
+            for ch in device.channels:
+                discovered[ch.address] = (ch.type, ch.name)
+    except Exception:
+        logger.warning("CCU3 list_devices() failed — falling back to config-only device list")
+
+    # Union of all known addresses
+    all_addresses = sorted(set(config) | set(discovered))
+
+    result = []
+    for address in all_addresses:
+        hm_type, ccu3_name = discovered.get(address, ("", ""))
+        row = config.get(address)
+
+        # Resolve fields with priority: config > discovery > defaults
+        exported = row["exported"] if row else False
+        hk_type_obj = row["hk_type"] if row else None
+        name = (row["name"] if row and row["name"] else None) or ccu3_name or address
+
+        suggested = auto_hk_type(hm_type) if hm_type else None
+
+        result.append({
+            "address": address,
+            "type": hm_type,
+            "exported": exported,
+            "hk_type": hk_type_obj.value if hk_type_obj else None,
+            "suggested_hk_type": suggested.value if suggested else None,
+            "name": name,
+        })
+
+    return result
