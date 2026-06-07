@@ -6,53 +6,60 @@ Konfigurierbar über eine Vanilla-JS Web-UI. Ersetzt das HomeKit-Plugin der CCU3
 
 Spec: `docs/superpowers/specs/2026-06-07-homekit-bridge-design.md`
 Plan: `docs/superpowers/plans/2026-06-07-homekit-bridge.md`
+Refactor-Plan: `docs/superpowers/plans/2026-06-07-homekit-bridge-mqtt-refactor.md`
 
 ---
 
 ## Architektur
 
+Die Bridge ist ein **MQTT-Konsument**. Gerätedaten kommen von den Diensten `ccu3` und
+`solaredge`, die sie auf den MQTT-Broker publishen. Die Bridge selbst enthält keine
+direkten Hardware-Adapter mehr.
+
 ```
-CCU3 (XML-RPC + Echtzeit-Callback)    SolarEdge WR (Modbus TCP :1502)
-            │                                       │
-            ▼                                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Docker-Container · Python 3.12                              │
-│  ccu3_adapter   solaredge_adapter   device_mapper            │
-│  hap_bridge (HAP-python)   web (FastAPI + Vanilla-JS)        │
-│  config (SQLite)                                             │
-└─────────────────────────────────────────────────────────────┘
+MQTT-Broker (127.0.0.1:1883)
+  homematic/+/state  (retained, von ccu3-Dienst)
+  homematic/$discovery  (retained, von ccu3-Dienst)
+  solaredge/state    (retained, von solaredge-Dienst)
+        │  subscribe                                   ▲ publish homematic/<addr>/set
+        ▼                                              │
+┌─────────────────────────────────────────────────────────────────┐
+│  Docker-Container · Python 3.12                                  │
+│  MqttSource   device_mapper                                      │
+│  hap_bridge (HAP-python)   web (FastAPI + Vanilla-JS)            │
+│  config (SQLite)                                                 │
+└─────────────────────────────────────────────────────────────────┘
             │                                       │
             ▼                                       ▼
   Apple Home (anzeigen/schalten)          Browser (Konfig-UI)
 ```
 
 Kommunikation zwischen Subsystemen über einen **In-Process-Eventbus** (`events.py`).
-Jeder Adapter ist isoliert — Ausfall einer Quelle beeinträchtigt die andere nicht.
+`MqttSource` ist ein Drop-in für den früheren `Ccu3Adapter` — gleiche Schnittstelle
+(`list_devices()`, `set_value()`, `connected`, `start()`), gleiche Bus-Topics
+(`ccu3.state`, `solaredge.data`). Der Rest der Bridge ist unangetastet.
+
+**Bekannte Einschränkung:** `solaredge/state` enthält kein Tagesenergie-Feld →
+`PVData.energy_today_kwh = 0.0`. Das PV-Energie-Accessory zeigt 0 kWh. Falls benötigt,
+muss der `solaredge`-Dienst ein Energie-Feld publishen.
 
 ---
 
 ## Verzeichnisstruktur
 
 ```
-homekit/
+homekit-bridge/
 ├── pyproject.toml
 ├── Dockerfile
-├── docker-compose.yml
+├── homekit-bridge.yaml      # Docker-Compose (aktive Datei)
 ├── .env.example
-├── README.md
 ├── src/homekit_bridge/
 │   ├── __main__.py          # Entrypoint: verkabelt alle Subsysteme
 │   ├── config.py            # SQLite-backed ConfigStore
-│   ├── settings.py          # Env-Var-Settings (CCU3_HOST, SOLAREDGE_HOST, …)
+│   ├── settings.py          # Env-Var-Settings (MQTT_HOST, MQTT_PORT, …)
 │   ├── events.py            # In-Process-Eventbus (thread-safe)
 │   ├── models.py            # Dataclasses: Device, Channel, HKMapping, PVData
-│   ├── ccu3/
-│   │   ├── client.py        # XML-RPC-Client-Wrapper
-│   │   ├── callback.py      # XML-RPC-Callback-Server (empfängt CCU3-Events)
-│   │   └── adapter.py       # Orchestrierung + Reconnect/Backoff
-│   ├── solaredge/
-│   │   ├── registers.py     # SunSpec-Modbus-Registerkonstanten
-│   │   └── adapter.py       # pymodbus-Poller → PVData → Eventbus
+│   ├── mqttsource.py        # MqttSource: MQTT-Konsum + bus.publish
 │   ├── mapper/
 │   │   └── device_mapper.py # CCU3-Kanal → HK-Typ; PV → Accessory-Specs (rein, kein I/O)
 │   ├── hap/
@@ -64,7 +71,8 @@ homekit/
 └── tests/
     ├── conftest.py
     ├── test_models.py / test_settings.py / test_events.py / test_config.py
-    ├── ccu3/   solaredge/   mapper/   hap/   web/
+    ├── test_mqttsource.py / test_main_wiring.py
+    ├── mapper/   hap/   web/
 ```
 
 ---
@@ -86,11 +94,12 @@ ruff check src tests
 
 | Variable | Pflicht | Default | Beschreibung |
 |---|---|---|---|
-| `CCU3_HOST` | ja | — | IP/Hostname der CCU3 |
-| `SOLAREDGE_HOST` | ja | — | IP/Hostname des Wechselrichters |
-| `SOLAREDGE_UNIT_ID` | nein | `1` | Modbus Unit ID |
+| `MQTT_HOST` | nein | `127.0.0.1` | IP/Hostname des MQTT-Brokers |
+| `MQTT_PORT` | nein | `1883` | Port des MQTT-Brokers |
 | `WEB_PASSWORD` | nein | — | Passwort für die Web-UI (HTTP Basic) |
 | `STATE_DIR` | nein | `./state` | Verzeichnis für SQLite-DB + HAP-Pairing |
+| `WEB_HOST` | nein | `0.0.0.0` | Bind-Adresse der Web-UI |
+| `WEB_PORT` | nein | `8095` | Port der Web-UI |
 
 Secrets **nie** in SQLite oder Code — nur Env-Vars.
 
@@ -123,38 +132,35 @@ nicht mitgeprüft wurde.
 
 ## Projektstatus
 
-**v1 feature-complete** — Stand 2026-06-07, HEAD `9d24813`, vom Reviewer freigegeben.
+**v2 (MQTT-Refactor) abgeschlossen** — Stand 2026-06-07.
 
-- 119 Tests grün (`pytest -q`), `ruff check` sauber, Working Tree clean.
-- Alle 8 Phasen implementiert + Discovery-Merge-Fix (#15) + 3 Minor-Review-Punkte
-  (`ConfigStore.list_all`, `/api/solar` None-Fallback, 422-Test) erledigt.
-- **Noch nicht gegen echte Hardware verifiziert.** Beim ersten Live-Connect prüfen:
-  - SolarEdge: Modbus-Register-Mapping (`registers.py`) gegen echten Wechselrichter abgleichen.
-  - CCU3: exakte Homematic-Kanal-Parameter (`STATE`, `LEVEL`, …) im Mapper verifizieren.
+- 103 Tests grün (`pytest -q`), `ruff check` sauber.
+- Bridge ist reiner MQTT-Konsument; `ccu3`- und `solaredge`-Adapter sind eliminiert.
+- Daten kommen von den Quell-Diensten `ccu3` und `solaredge` via MQTT.
 
 ### Phasenstatus
 
 | # | Phase | Status |
 |---|---|---|
 | 0-1 | Scaffold + Core (models, settings, events, SQLite) | abgeschlossen |
-| 2 | CCU3-Adapter (XML-RPC + Callback + Reconnect) | abgeschlossen |
-| 3 | SolarEdge-Adapter (Modbus TCP) | abgeschlossen |
+| 2 | CCU3-Adapter (XML-RPC + Callback + Reconnect) | abgeschlossen (entfernt in MQTT-Refactor) |
+| 3 | SolarEdge-Adapter (Modbus TCP) | abgeschlossen (entfernt in MQTT-Refactor) |
 | 4 | Device-Mapper (rein, kein I/O) | abgeschlossen |
 | 5 | HAP-Bridge (Accessory-Factories + Wiring) | abgeschlossen |
 | 6 | Web-API (FastAPI) | abgeschlossen |
 | 7 | Frontend (Vanilla-JS: Dashboard + Tabelle + Solar) | abgeschlossen |
 | 8 | Integration, Docker, README | abgeschlossen |
-| — | Discovery-Merge-Fix + Minor-Review-Punkte | abgeschlossen |
+| — | MQTT-Refactor (E1-E5) | abgeschlossen |
 
 ---
 
-## Scope v1 — Grenzen
+## Scope — Grenzen
 
-Folgendes ist **nicht** in v1:
-- Weitere Quellen (Shelly, MQTT, Zigbee …)
+Folgendes ist **nicht** enthalten:
 - Cloud-Anbindungen oder externe APIs
 - Historische Langzeit-Statistiken (nur rudimentäre Verlaufsanzeige in UI)
 - User-Management (nur optionaler Single-Passwort-Schutz)
 - Automatisierungen (nur Anzeigen + Schalten)
+- HomeKit-Pairing ist ein manueller Schritt (PIN aus dem Docker-Log)
 
 Scope-Erweiterungen → erst Rücksprache mit team-lead.

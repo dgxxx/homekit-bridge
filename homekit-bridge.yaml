@@ -5,8 +5,8 @@ services:
     build: .
     container_name: homekit-bridge
     restart: unless-stopped
-    # host network is required for HAP mDNS/Bonjour discovery and for the
-    # CCU3 XML-RPC callback server to be reachable from the CCU3
+    # host network is required for HAP mDNS/Bonjour discovery and for
+    # MQTT broker access (127.0.0.1:1883 on the host)
     network_mode: host
     volumes:
       - ./state:/app/state
