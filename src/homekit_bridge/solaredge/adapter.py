@@ -69,8 +69,10 @@ class SolarEdgeAdapter:
         """
         try:
             return self._read_registers()
-        except Exception:
-            logger.exception("SolarEdge read failed")
+        except Exception as exc:
+            # Expected & transient when the inverter is unreachable (e.g. Modbus
+            # not yet enabled) — log a concise warning, not a full stack every poll.
+            logger.warning("SolarEdge read failed (inverter unreachable?): %s", exc)
             return PVData(available=False)
 
     def poll(
