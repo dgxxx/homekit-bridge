@@ -49,8 +49,6 @@ class FakeBridgeState:
 
 def _make_settings(web_password=None):
     return Settings(
-        ccu3_host="192.168.1.10",
-        solaredge_host="192.168.1.20",
         web_password=web_password,
     )
 
