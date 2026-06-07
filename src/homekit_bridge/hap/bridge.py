@@ -69,6 +69,9 @@ class HomeKitBridge:
         self._build_ccu3_accessories()
         self._build_pv_accessories()
 
+        # Register the bridge with the driver so it can be started/paired.
+        self._driver.add_accessory(self.hap_bridge)
+
         self._bus.subscribe("ccu3.state", self._on_ccu3_state)
         self._bus.subscribe("solaredge.data", self._on_solaredge_data)
 

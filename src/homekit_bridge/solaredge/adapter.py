@@ -35,7 +35,8 @@ class SolarEdgeAdapter:
     """Reads PV data from a SolarEdge inverter over Modbus TCP.
 
     Pass a ``client`` in tests to avoid real network calls.  The client must
-    expose ``read_holding_registers(address, count, slave=int)``.
+    expose ``read_holding_registers(address, *, count=int, device_id=int)``
+    (the pymodbus 3.x signature).
     """
 
     def __init__(
@@ -111,13 +112,13 @@ class SolarEdgeAdapter:
         )
 
     def _read_ac_power(self) -> float:
-        resp = self._client.read_holding_registers(R.AC_POWER, 2, slave=self._unit_id)
+        resp = self._client.read_holding_registers(R.AC_POWER, count=2, device_id=self._unit_id)
         regs = resp.registers
         return _apply_sf(regs[0], regs[1])
 
     def _read_battery_soc(self) -> Optional[int]:
         try:
-            resp = self._client.read_holding_registers(R.BATTERY_SOC, 1, slave=self._unit_id)
+            resp = self._client.read_holding_registers(R.BATTERY_SOC, count=1, device_id=self._unit_id)
             return int(resp.registers[0])
         except Exception:
             # Battery may not be present — treat as absent rather than failing
@@ -126,7 +127,7 @@ class SolarEdgeAdapter:
 
     def _read_energy_today(self) -> float:
         try:
-            resp = self._client.read_holding_registers(R.ENERGY_TODAY, 2, slave=self._unit_id)
+            resp = self._client.read_holding_registers(R.ENERGY_TODAY, count=2, device_id=self._unit_id)
             regs = resp.registers
             wh = _apply_sf(regs[0], regs[1])
             return wh / 1000.0  # Wh -> kWh

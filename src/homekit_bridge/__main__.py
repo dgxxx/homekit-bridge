@@ -258,7 +258,7 @@ def main() -> None:
 
     logger.info(
         "HomeKit Bridge running — web UI on http://%s:%d  HAP on port %d",
-        web_host, web_port, driver.port,
+        web_host, web_port, _HAP_PORT,
     )
 
     # Block until shutdown signal

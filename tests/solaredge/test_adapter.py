@@ -27,7 +27,7 @@ class FakeModbus:
         # Map start_addr -> register word list
         self._values: dict[int, list[int]] = values or {}
 
-    def read_holding_registers(self, address: int, count: int, slave: int = 1):
+    def read_holding_registers(self, address: int, count: int = 1, device_id: int = 1):
         if self._raise:
             raise OSError("timeout")
         return FakeRegisters(self._values.get(address, [0] * count))
@@ -168,7 +168,7 @@ def test_poll_continues_after_error():
     stop_event = threading.Event()
 
     class AlternatingModbus:
-        def read_holding_registers(self, address, count, slave=1):
+        def read_holding_registers(self, address, count=1, device_id=1):
             call_count[0] += 1
             if call_count[0] == 1:
                 raise OSError("first call fails")

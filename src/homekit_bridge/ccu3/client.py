@@ -25,6 +25,14 @@ class Ccu3Client:
         else:
             self._proxy = xmlrpc.client.ServerProxy(f"http://{host}:{port}")
 
+    def init(self, callback_url: str, interface_id: str) -> None:
+        """Register (or, with an empty ``interface_id``, deregister) our XML-RPC
+        callback with the CCU3 so it pushes value-change events to us."""
+        try:
+            self._proxy.init(callback_url, interface_id)
+        except Exception as exc:
+            raise Ccu3Error(f"init failed for {callback_url}/{interface_id}") from exc
+
     def set_value(self, address: str, key: str, value: Any) -> None:
         try:
             self._proxy.setValue(address, key, value)
