@@ -116,14 +116,7 @@ def test_read_error_does_not_raise():
 
 
 def test_sunspec_scale_factor_negative():
-    """Scale factor -2 means multiply value by 10^-2 = 0.01."""
-    # power_raw=250000, sf=-2  => 250000 * 0.01 = 2500.0 W
-    values = {
-        R.AC_POWER: [250000 & 0xFFFF, 0xFFFE],  # 250000 (split to uint16), sf=-2
-        R.BATTERY_SOC: [80],
-        R.ENERGY_TODAY: [1000, 0],
-    }
-    # Note: 250000 doesn't fit in uint16; use a smaller example
+    """Scale factor -1 (0xFFFF as int16) means multiply value by 10^-1 = 0.1."""
     # power_raw=25000, sf=-1 => 25000 * 0.1 = 2500.0 W
     values = {
         R.AC_POWER: [25000, 0xFFFF],  # 25000 value, sf=-1 (0xFFFF as int16 = -1)
@@ -205,4 +198,4 @@ def test_poll_continues_after_error():
     thread.join(timeout=1.0)
 
     # Should have published at least one PVData(available=False) and one successful read
-    assert len(received) >= 1
+    assert len(received) >= 2
