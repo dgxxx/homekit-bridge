@@ -2,7 +2,7 @@ from homekit_bridge.models import Channel, PVData
 
 
 def test_channel_defaults():
-    ch = Channel(address="ABC123:1", type="SWITCH", name="Lamp")
+    ch = Channel(address="ABC123:1", hm_type="SWITCH", name="Lamp")
     assert ch.exported is False
     assert ch.hk_type is None
 

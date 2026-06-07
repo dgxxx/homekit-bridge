@@ -84,7 +84,7 @@ class HomeKitBridge:
             name: str = mapping["name"] or address
             hk_type = resolve_hk_type(
                 # minimal channel duck-type for resolve_hk_type
-                _ChannelProxy(address=address, type=""),
+                _ChannelProxy(address=address, hm_type=""),
                 mapping,
             )
             if hk_type is None:
@@ -158,7 +158,7 @@ class HomeKitBridge:
 class _ChannelProxy:
     """Minimal duck-type satisfying resolve_hk_type's channel parameter."""
 
-    def __init__(self, address: str, type: str) -> None:
+    def __init__(self, address: str, hm_type: str) -> None:
         self.address = address
-        self.type = type
+        self.hm_type = hm_type
         self.hk_type = None

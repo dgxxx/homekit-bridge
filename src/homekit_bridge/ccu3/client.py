@@ -61,7 +61,7 @@ class Ccu3Client:
             parent_addr = entry["PARENT"]
             channel = Channel(
                 address=entry["ADDRESS"],
-                type=entry.get("TYPE", ""),
+                hm_type=entry.get("TYPE", ""),
                 name=entry.get("NAME", entry["ADDRESS"]),
             )
             if parent_addr in roots:

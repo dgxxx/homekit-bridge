@@ -268,7 +268,7 @@ async def test_get_devices_shows_discovered_ccu3_channels(store, solar, bridge_s
     device = Device(
         address="OEQ1",
         model="HM-LC-Sw1",
-        channels=[Channel(address="OEQ1:1", type="SWITCH", name="Channel 1")],
+        channels=[Channel(address="OEQ1:1", hm_type="SWITCH", name="Channel 1")],
     )
     app = _make_app_with_ccu3(store, solar, bridge_state, [device])
 
@@ -291,7 +291,7 @@ async def test_get_devices_config_overrides_discovery(store, solar, bridge_state
     device = Device(
         address="OEQ1",
         model="HM-LC-Sw1",
-        channels=[Channel(address="OEQ1:1", type="SWITCH", name="Channel 1")],
+        channels=[Channel(address="OEQ1:1", hm_type="SWITCH", name="Channel 1")],
     )
     app = _make_app_with_ccu3(store, solar, bridge_state, [device])
 
@@ -352,7 +352,7 @@ async def test_get_devices_no_duplicate_when_in_both(store, solar, bridge_state)
     device = Device(
         address="OEQ1",
         model="HM-LC-Sw1",
-        channels=[Channel(address="OEQ1:1", type="SWITCH", name="Channel 1")],
+        channels=[Channel(address="OEQ1:1", hm_type="SWITCH", name="Channel 1")],
     )
     app = _make_app_with_ccu3(store, solar, bridge_state, [device])
 
@@ -361,3 +361,42 @@ async def test_get_devices_no_duplicate_when_in_both(store, solar, bridge_state)
     data = r.json()
     addresses = [d["address"] for d in data]
     assert addresses.count("OEQ1:1") == 1
+
+
+# ---------------------------------------------------------------------------
+# POST /api/devices — invalid hk_type → 422
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_post_device_invalid_hk_type_returns_422(app, store):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(
+            "/api/devices/OEQ9:1",
+            json={"exported": True, "hk_type": "not_a_real_type", "name": "X"},
+        )
+    assert r.status_code == 422
+    # nothing should have been persisted
+    assert store.get_mapping("OEQ9:1") is None
+
+
+# ---------------------------------------------------------------------------
+# GET /api/solar — graceful when no snapshot yet (pv is None)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_solar_none_snapshot_returns_unavailable(store, ccu3, bridge_state):
+    """Before the first poll, solar_state.pv may be None — report unavailable, not 500."""
+    class EmptySolarState:
+        pv = None
+
+    app = create_app(
+        config_store=store,
+        ccu3_adapter=ccu3,
+        solar_state=EmptySolarState(),
+        bridge_state=bridge_state,
+        settings=_make_settings(),
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/solar")
+    assert r.status_code == 200
+    assert r.json()["available"] is False

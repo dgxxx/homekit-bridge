@@ -80,7 +80,7 @@ def resolve_hk_type(
     override: Optional[HKType] = mapping.get("hk_type")
     if override is not None:
         return override
-    return auto_hk_type(channel.type)
+    return auto_hk_type(channel.hm_type)
 
 
 # ---------------------------------------------------------------------------

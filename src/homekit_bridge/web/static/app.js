@@ -45,7 +45,7 @@ const state = {
   /** @type {null|{paired:boolean, accessory_count:number, ccu3_connected:boolean, solaredge_connected:boolean}} */
   status: null,
 
-  /** @type {Array<{address:string, type:string, name:string, exported:boolean, hk_type:string|null}>} */
+  /** @type {Array<{address:string, type:string, exported:boolean, hk_type:string|null, suggested_hk_type:string|null, name:string}>} */
   devices: [],
 
   /** pending row edits keyed by address */
@@ -354,7 +354,7 @@ async function refreshDevices() {
   if (!tbody) return;
 
   tbody.innerHTML = `
-    <tr><td colspan="5" class="state-message">
+    <tr><td colspan="6" class="state-message">
       <span class="spinner" aria-hidden="true"></span> Lade Geraete&#8230;
     </td></tr>`;
 
@@ -362,7 +362,7 @@ async function refreshDevices() {
     state.devices = await fetchDevices();
   } catch (err) {
     tbody.innerHTML = `
-      <tr><td colspan="5" class="state-message">
+      <tr><td colspan="6" class="state-message">
         Fehler beim Laden: ${escHtml(err.message)}
       </td></tr>`;
     return;
@@ -401,7 +401,7 @@ function renderDeviceTable(devices) {
 
   if (devices.length === 0) {
     tbody.innerHTML =
-      '<tr><td colspan="5" class="state-message">Keine Geraete gefunden.</td></tr>';
+      '<tr><td colspan="6" class="state-message">Keine Geraete gefunden.</td></tr>';
     return;
   }
 
@@ -413,17 +413,26 @@ function renderDeviceTable(devices) {
 
 /**
  * Build the HTML string for one device row.
- * API returns {address:string, exported:bool, hk_type:string|null, name:string}.
- * @param {{ address:string, name:string, exported:boolean, hk_type:string|null }} device
+ * API returns {address, type, exported, hk_type, suggested_hk_type, name}.
+ * Dropdown shows the explicit hk_type override when set; falls back to
+ * suggested_hk_type (auto-detected from HM type) when the user has not yet
+ * configured an override.
+ * @param {{ address:string, type:string, exported:boolean, hk_type:string|null, suggested_hk_type:string|null, name:string }} device
  * @returns {string}
  */
 function buildDeviceRow(device) {
-  const { address, name, exported, hk_type } = device;
+  const { address, type, name, exported, hk_type, suggested_hk_type } = device;
   const safeAddr = escHtml(address);
 
+  // Effective dropdown value: explicit override > auto-suggestion > blank ("— auto —")
+  const effectiveType = hk_type ?? suggested_hk_type ?? "";
+
   const typeOptions = HK_TYPES.map(t => {
-    const selected = (hk_type ?? "") === t.value ? " selected" : "";
-    return `<option value="${escHtml(t.value)}"${selected}>${escHtml(t.label)}</option>`;
+    const selected = effectiveType === t.value ? " selected" : "";
+    // Mark the suggestion visually when no override is set yet
+    const isSuggestion = !hk_type && t.value && t.value === suggested_hk_type;
+    const label = isSuggestion ? `${t.label} (Vorschlag)` : t.label;
+    return `<option value="${escHtml(t.value)}"${selected}>${escHtml(label)}</option>`;
   }).join("");
 
   return `
@@ -439,6 +448,7 @@ function buildDeviceRow(device) {
         />
       </td>
       <td><code class="address">${safeAddr}</code></td>
+      <td>${escHtml(type)}</td>
       <td>
         <select
           class="hktype-select"

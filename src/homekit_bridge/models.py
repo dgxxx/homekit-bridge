@@ -17,11 +17,11 @@ class HKType(str, Enum):
 
 @dataclass
 class Channel:
-    address: str            # CCU3 channel address, e.g. "OEQ0123456:1"
-    type: str               # raw HM channel type, e.g. "SWITCH", "BLIND"
+    address: str              # CCU3 channel address, e.g. "OEQ0123456:1"
+    hm_type: str              # raw HM channel type, e.g. "SWITCH", "BLIND"
     name: str
     exported: bool = False
-    hk_type: Optional[HKType] = None  # override; None => auto from `type`
+    hk_type: Optional[HKType] = None  # override; None => auto from hm_type
 
 
 @dataclass

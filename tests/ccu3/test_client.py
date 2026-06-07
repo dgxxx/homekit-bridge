@@ -31,7 +31,7 @@ def test_list_devices_builds_channels():
     c = Ccu3Client(proxy=FakeProxy())
     devices = c.list_devices()
     chans = [ch for d in devices for ch in d.channels]
-    assert any(ch.address == "OEQ1:1" and ch.type == "SWITCH" for ch in chans)
+    assert any(ch.address == "OEQ1:1" and ch.hm_type == "SWITCH" for ch in chans)
 
 
 def test_list_devices_groups_channels_under_parent():

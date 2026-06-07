@@ -42,3 +42,11 @@ def test_missing_solaredge_host_raises(monkeypatch):
     monkeypatch.delenv("SOLAREDGE_HOST", raising=False)
     with pytest.raises(ValueError, match="SOLAREDGE_HOST"):
         Settings.from_env()
+
+
+def test_invalid_unit_id_gives_descriptive_error(monkeypatch):
+    monkeypatch.setenv("CCU3_HOST", "host-a")
+    monkeypatch.setenv("SOLAREDGE_HOST", "host-b")
+    monkeypatch.setenv("SOLAREDGE_UNIT_ID", "not-a-number")
+    with pytest.raises(ValueError, match="SOLAREDGE_UNIT_ID"):
+        Settings.from_env()

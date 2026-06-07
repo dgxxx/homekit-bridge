@@ -41,23 +41,23 @@ def test_auto_hk_type_case_insensitive():
 # ---------------------------------------------------------------------------
 
 def test_resolve_uses_explicit_hk_type():
-    ch = Channel(address="A:1", type="SWITCH", name="Lamp", hk_type=HKType.OUTLET)
+    ch = Channel(address="A:1", hm_type="SWITCH", name="Lamp", hk_type=HKType.OUTLET)
     mapping = {"hk_type": HKType.OUTLET}
     assert resolve_hk_type(ch, mapping) == HKType.OUTLET
 
 
 def test_resolve_falls_back_to_auto_when_mapping_none():
-    ch = Channel(address="A:1", type="DIMMER", name="Dimmer")
+    ch = Channel(address="A:1", hm_type="DIMMER", name="Dimmer")
     assert resolve_hk_type(ch, {"hk_type": None}) == HKType.LIGHTBULB
 
 
 def test_resolve_falls_back_when_no_mapping():
-    ch = Channel(address="A:1", type="BLIND", name="Blind")
+    ch = Channel(address="A:1", hm_type="BLIND", name="Blind")
     assert resolve_hk_type(ch, {}) == HKType.COVER
 
 
 def test_resolve_returns_none_for_unknown_and_no_override():
-    ch = Channel(address="A:1", type="UNKNOWN_TYPE", name="?")
+    ch = Channel(address="A:1", hm_type="UNKNOWN_TYPE", name="?")
     assert resolve_hk_type(ch, {}) is None
 
 

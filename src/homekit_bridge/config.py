@@ -1,9 +1,12 @@
+import logging
 import sqlite3
 import threading
 from pathlib import Path
 from typing import Any, Optional
 
 from homekit_bridge.models import HKType
+
+logger = logging.getLogger(__name__)
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS mappings (
@@ -27,7 +30,11 @@ ON CONFLICT(address) DO UPDATE SET
 def _deserialize_hk_type(value: Optional[str]) -> Optional[HKType]:
     if value is None:
         return None
-    return HKType(value)
+    try:
+        return HKType(value)
+    except ValueError:
+        logger.warning("Unknown hk_type value %r in DB — treating as None", value)
+        return None
 
 
 def _serialize_hk_type(hk_type: Optional[HKType]) -> Optional[str]:
@@ -88,5 +95,13 @@ class ConfigStore:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM mappings WHERE exported = 1 ORDER BY address"
+            ).fetchall()
+        return [_row_to_dict(row) for row in rows]
+
+    def list_all(self) -> list[dict[str, Any]]:
+        """Return every stored mapping (exported and non-exported)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM mappings ORDER BY address"
             ).fetchall()
         return [_row_to_dict(row) for row in rows]

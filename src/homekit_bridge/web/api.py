@@ -160,7 +160,9 @@ def create_app(
 
     @app.get("/api/solar", response_model=SolarOut, dependencies=api_deps)
     async def get_solar() -> dict:
-        pv: PVData = solar_state.pv
+        # Before the first poll completes solar_state.pv may be None — report
+        # an "unavailable" snapshot instead of crashing with a 500.
+        pv: PVData = solar_state.pv if solar_state.pv is not None else PVData(available=False)
         return {
             "power_w": pv.power_w,
             "energy_today_kwh": pv.energy_today_kwh,
@@ -197,14 +199,8 @@ def create_app(
 # ---------------------------------------------------------------------------
 
 def _all_config_mappings(store: ConfigStore) -> dict[str, dict]:
-    """Return all config-store rows as {address: row_dict}."""
-    from homekit_bridge.config import _row_to_dict  # same package — not a layer violation
-
-    with store._lock:
-        rows = store._conn.execute(
-            "SELECT * FROM mappings ORDER BY address"
-        ).fetchall()
-    return {row["address"]: _row_to_dict(row) for row in rows}
+    """Return all config-store rows keyed by address."""
+    return {row["address"]: row for row in store.list_all()}
 
 
 def _merged_device_list(store: ConfigStore, ccu3_adapter: Any) -> list[dict]:
@@ -226,7 +222,7 @@ def _merged_device_list(store: ConfigStore, ccu3_adapter: Any) -> list[dict]:
     try:
         for device in ccu3_adapter.list_devices():
             for ch in device.channels:
-                discovered[ch.address] = (ch.type, ch.name)
+                discovered[ch.address] = (ch.hm_type, ch.name)
     except Exception:
         logger.warning("CCU3 list_devices() failed — falling back to config-only device list")
 
