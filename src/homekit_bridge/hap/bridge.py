@@ -110,6 +110,8 @@ class HomeKitBridge:
                     name=name,
                     on_set=_make_setter(address),
                 )
+            # Deliberate broad catch: a single bad config/accessory must not
+            # prevent the rest of the bridge from starting.
             except Exception:
                 logger.exception("Failed to build accessory for %s", address)
                 continue

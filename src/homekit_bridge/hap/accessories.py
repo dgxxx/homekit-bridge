@@ -348,6 +348,9 @@ def make_accessory(
         logger.warning("Unknown HKType '%s' for accessory '%s'", hk_type, name)
         return None
     kwargs: dict[str, Any] = {"driver": driver, "name": name}
-    if on_set is not None and "on_set" in inspect.signature(cls.__init__).parameters:
-        kwargs["on_set"] = on_set
+    if on_set is not None:
+        if "on_set" in inspect.signature(cls.__init__).parameters:
+            kwargs["on_set"] = on_set
+        else:
+            logger.debug("on_set ignored for %s ('%s'): class is read-only", hk_type, name)
     return cls(**kwargs)
