@@ -128,8 +128,8 @@ def reconcile(self, _event=None) -> None:
         cur = self._exported.get(addr)
         if cur is None:
             to_add.append(m)
-        elif (cur.get("hk_type"), cur.get("name")) != (m.get("hk_type"), m.get("name")):
-            to_remove.append(addr); to_add.append(m)   # ersetzen
+        elif cur.get("hk_type") != m.get("hk_type"):
+            to_remove.append(addr); to_add.append(m)   # ersetzen — nur bei Typwechsel
     for addr in self._exported:
         if addr not in desired:
             to_remove.append(addr)                       # un-exportiert
@@ -137,7 +137,15 @@ def reconcile(self, _event=None) -> None:
         return
     self._driver.loop.call_soon_threadsafe(self._apply, to_add, to_remove)
 ```
-(`hk_type` im Mapping ist ein `HKType`-Enum oder None — Vergleich per Wert ist eindeutig.)
+(`hk_type` im Mapping ist ein `HKType`-Enum oder None — Enum-Vergleich ist eindeutig.)
+
+**Bewusst nur `hk_type` als Änderungs-Kriterium, NICHT `name`:** Der in HomeKit
+relevante Name und die Raumzuordnung leben in der Apple Home App, gespeichert an der
+**AID** des Accessories. Ein Replace nur wegen einer Namensänderung in der Bridge-UI würde
+diese AID neu vergeben und damit Raum-/Namens-/Automationszuordnung des Nutzers zerstören —
+für rein kosmetischen Nutzen. Eine Namensänderung in der UI wirkt daher erst nach einem
+Neustart (der UI-Name ist nur das initiale Label); Export, Un-Export und hk_type-Wechsel
+wirken live.
 
 **`_apply(to_add, to_remove)`** (Driver-Loop-Thread):
 ```python
@@ -202,6 +210,8 @@ return {"status": "ok", "address": address}
     - Hinzufügen: Accessory in `hap_bridge.accessories` + `config_changed` aufgerufen.
     - Un-Export: Accessory entfernt + `config_changed`.
     - hk_type-Wechsel: altes weg, neues da (Ersetzen).
+    - **Name-only-Änderung: kein Replace, `config_changed` NICHT aufgerufen** (AID/Raum
+      bleiben erhalten).
     - keine Änderung: `config_changed` **nicht** aufgerufen.
 - `web/test_api.py`: POST `/api/devices/{addr}` publisht `config.changed` mit der Adresse
   (Fake-Bus); bestehende POST-Tests um den `bus`-Parameter ergänzt.
@@ -218,6 +228,8 @@ return {"status": "ok", "address": address}
 
 - AID-Stabilität über Neustarts hinweg (vorbestehendes pyhap-Verhalten, unberührt).
 - Live-Änderung des Bridge-Pairings oder der PV-Accessories.
-- Entfernen/Ändern, das HomeKit-Raumzuordnungen erhält (ein ersetztes Accessory bekommt eine
-  neue AID und erscheint als neu — akzeptiert).
+- **Namensänderungen wirken nicht live** (nur nach Neustart) — bewusst, um HomeKit-Raum/
+  -Name an der AID zu erhalten. Raumzuordnung erfolgt ohnehin in der Apple Home App.
+- Bei einem hk_type-Wechsel (selten, inhaltlich zwingend) bekommt das ersetzte Accessory eine
+  neue AID und erscheint in HomeKit als neu — Raumzuordnung muss dann neu gesetzt werden.
 ```
