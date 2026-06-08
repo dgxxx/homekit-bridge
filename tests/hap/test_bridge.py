@@ -250,3 +250,35 @@ def test_config_changed_event_triggers_reconcile(driver, store, bus, ccu3, monke
 
     assert len(bridge.accessories) == 1
     assert calls["config_changed"] == 1
+
+
+def test_thermostat_routes_datapoints_without_clobber(driver, store, bus, ccu3):
+    store.set_mapping("TH:1", exported=True, hk_type=HKType.THERMOSTAT, name="Thermo")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    # Order mirrors the real payload: ACTUAL_TEMPERATURE is NOT last; BOOST_MODE is.
+    for k, v in [("ACTUAL_TEMPERATURE", 25.0), ("HUMIDITY", 40),
+                 ("SET_POINT_TEMPERATURE", 4.5), ("BOOST_MODE", False)]:
+        bus.publish("ccu3.state", {"address": "TH:1", "key": k, "value": v})
+    svc = bridge.accessories[0].get_service("Thermostat")
+    assert svc.get_characteristic("CurrentTemperature").value == 25.0
+    assert svc.get_characteristic("CurrentRelativeHumidity").value == 40
+    assert svc.get_characteristic("TargetTemperature").value == 4.5
+
+
+def test_thermostat_set_publishes_set_point_temperature(driver, store, bus, ccu3):
+    store.set_mapping("TH:1", exported=True, hk_type=HKType.THERMOSTAT, name="Thermo")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    char = bridge.accessories[0].get_service("Thermostat").get_characteristic("TargetTemperature")
+    char.client_update_value(21.0)
+    assert ("TH:1", "SET_POINT_TEMPERATURE", 21.0) in ccu3.set_calls
+
+
+def test_switch_set_publishes_state(driver, store, bus, ccu3):
+    store.set_mapping("SW:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    char = bridge.accessories[0].get_service("Switch").get_characteristic("On")
+    char.client_update_value(True)
+    assert ("SW:1", "STATE", True) in ccu3.set_calls

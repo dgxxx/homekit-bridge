@@ -23,8 +23,9 @@ from homekit_bridge.hap.accessories import (
     ProducingAccessory,
     make_accessory,
 )
+from homekit_bridge.mapper.datapoints import WRITE_DATAPOINTS, read_update
 from homekit_bridge.mapper.device_mapper import resolve_hk_type
-from homekit_bridge.models import PVData
+from homekit_bridge.models import HKType, PVData
 
 logger = logging.getLogger(__name__)
 
@@ -84,13 +85,25 @@ class HomeKitBridge:
     # Build helpers
     # ------------------------------------------------------------------
 
-    def _make_setter(self, addr: str) -> Any:
-        def on_set(value: Any) -> None:
-            try:
-                self._ccu3.set_value(addr, "STATE", value)
-            except Exception:
-                logger.exception("set_value failed for %s", addr)
-        return on_set
+    def _wire_writables(self, acc, address: str, hk_type: HKType) -> None:
+        get_chars = getattr(acc, "writable_characteristics", None)
+        if get_chars is None:
+            return
+        chars = get_chars()
+        for semantic, dp in WRITE_DATAPOINTS.get(hk_type, {}).items():
+            char = chars.get(semantic)
+            if char is None:
+                continue
+
+            def setter(value, addr=address, key=dp.kwarg, scale=dp.scale):
+                try:
+                    self._ccu3.set_value(
+                        addr, key, value / scale if scale != 1.0 else value
+                    )
+                except Exception:
+                    logger.exception("set_value failed for %s", addr)
+
+            char.setter_callback = setter
 
     def _make_ccu3_accessory(self, mapping: dict) -> Optional[Accessory]:
         address = mapping["address"]
@@ -99,12 +112,9 @@ class HomeKitBridge:
         if hk_type is None:
             logger.info("Skipping %s: no HKType resolved", address)
             return None
-        return make_accessory(
-            driver=self._driver,
-            hk_type=hk_type.value,
-            name=name,
-            on_set=self._make_setter(address),
-        )
+        acc = make_accessory(driver=self._driver, hk_type=hk_type.value, name=name)
+        self._wire_writables(acc, address, hk_type)
+        return acc
 
     def _build_ccu3_accessories(self) -> None:
         for mapping in self._store.list_exported():
@@ -197,14 +207,14 @@ class HomeKitBridge:
     def _on_ccu3_state(self, event: dict) -> None:
         address: str = event.get("address", "")
         acc = self._addr_index.get(address)
-        if acc is None:
-            return  # not exported / not yet mapped
-
-        value = event.get("value")
+        mapping = self._exported.get(address)
+        if acc is None or mapping is None:
+            return
+        upd = read_update(mapping["hk_type"], event.get("key"), event.get("value"))
+        if not upd:
+            return
         try:
-            # Best-effort: update whichever state the accessory supports
-            if hasattr(acc, "update_state"):
-                acc.update_state(value)
+            acc.update_state(**upd)
         except Exception:
             logger.exception("update_state failed for %s", address)
 
