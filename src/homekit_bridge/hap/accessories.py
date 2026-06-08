@@ -17,8 +17,6 @@ from pyhap.accessory_driver import AccessoryDriver
 
 logger = logging.getLogger(__name__)
 
-_NOOP = lambda *a, **kw: None  # noqa: E731
-
 
 # ---------------------------------------------------------------------------
 # CCU3 accessories
