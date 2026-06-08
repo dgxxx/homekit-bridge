@@ -139,6 +139,9 @@ class HomeKitBridge:
         loop, which is the single owner of ``self._exported`` / ``self._addr_index``
         and of the HAP ``accessories`` dict — so there are no cross-thread races on
         the bridge's bookkeeping.
+
+        The event's ``address`` is intentionally ignored: a full-set reconcile is
+        idempotent and self-healing (it also recovers any update missed earlier).
         """
         desired = {m["address"]: m for m in self._store.list_exported()}
         self._driver.loop.call_soon_threadsafe(self._apply, desired)
