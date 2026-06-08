@@ -1,6 +1,6 @@
 """FastAPI application factory for homekit-bridge.
 
-``create_app(config_store, ccu3_adapter, solar_state, bridge_state, settings)``
+``create_app(config_store, ccu3_adapter, solar_state, bridge_state, settings, bus)``
 builds and returns the ASGI app.  All dependencies are injected so the app
 can be tested without real adapters.
 
