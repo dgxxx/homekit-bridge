@@ -3,7 +3,7 @@
 ``HomeKitBridge`` builds a single ``pyhap.accessory.Bridge`` accessory,
 populates it from the config store, and wires bidirectional state flow:
 
-- HomeKit SET  →  ``on_set`` callback  →  ``ccu3_adapter.set_value``
+- HomeKit SET  →  characteristic ``setter_callback``  →  ``ccu3_adapter.set_value``
 - EventBus ``"ccu3.state"``    →  matching accessory's ``update_state``
 - EventBus ``"solaredge.data"``  →  PV accessory group's ``update_state``
 """
@@ -85,6 +85,14 @@ class HomeKitBridge:
     # Build helpers
     # ------------------------------------------------------------------
 
+    def _make_setter(self, addr: str, key: str, scale: float):
+        def setter(value):
+            try:
+                self._ccu3.set_value(addr, key, value / scale if scale != 1.0 else value)
+            except Exception:
+                logger.exception("set_value failed for %s", addr)
+        return setter
+
     def _wire_writables(self, acc, address: str, hk_type: HKType) -> None:
         get_chars = getattr(acc, "writable_characteristics", None)
         if get_chars is None:
@@ -94,16 +102,7 @@ class HomeKitBridge:
             char = chars.get(semantic)
             if char is None:
                 continue
-
-            def setter(value, addr=address, key=dp.kwarg, scale=dp.scale):
-                try:
-                    self._ccu3.set_value(
-                        addr, key, value / scale if scale != 1.0 else value
-                    )
-                except Exception:
-                    logger.exception("set_value failed for %s", addr)
-
-            char.setter_callback = setter
+            char.setter_callback = self._make_setter(address, dp.kwarg, dp.scale)
 
     def _make_ccu3_accessory(self, mapping: dict) -> Optional[Accessory]:
         address = mapping["address"]
