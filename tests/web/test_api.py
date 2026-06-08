@@ -9,6 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from homekit_bridge.config import ConfigStore
+from homekit_bridge.events import EventBus
 from homekit_bridge.models import Channel, Device, HKType, PVData
 from homekit_bridge.settings import Settings
 from homekit_bridge.web.api import create_app
@@ -78,24 +79,31 @@ def bridge_state():
 
 
 @pytest.fixture
-def app(store, ccu3, solar, bridge_state):
+def bus():
+    return EventBus()
+
+
+@pytest.fixture
+def app(store, ccu3, solar, bridge_state, bus):
     return create_app(
         config_store=store,
         ccu3_adapter=ccu3,
         solar_state=solar,
         bridge_state=bridge_state,
         settings=_make_settings(),
+        bus=bus,
     )
 
 
 @pytest.fixture
-def auth_app(store, ccu3, solar, bridge_state):
+def auth_app(store, ccu3, solar, bridge_state, bus):
     return create_app(
         config_store=store,
         ccu3_adapter=ccu3,
         solar_state=solar,
         bridge_state=bridge_state,
         settings=_make_settings(web_password="secret"),
+        bus=bus,
     )
 
 
@@ -257,6 +265,7 @@ def _make_app_with_ccu3(store, solar, bridge_state, devices):
         solar_state=solar,
         bridge_state=bridge_state,
         settings=_make_settings(),
+        bus=EventBus(),
     )
 
 
@@ -334,6 +343,7 @@ async def test_get_devices_ccu3_failure_returns_config_only(store, solar, bridge
         solar_state=solar,
         bridge_state=bridge_state,
         settings=_make_settings(),
+        bus=EventBus(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -393,8 +403,22 @@ async def test_get_solar_none_snapshot_returns_unavailable(store, ccu3, bridge_s
         solar_state=EmptySolarState(),
         bridge_state=bridge_state,
         settings=_make_settings(),
+        bus=EventBus(),
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         r = await c.get("/api/solar")
     assert r.status_code == 200
     assert r.json()["available"] is False
+
+
+@pytest.mark.asyncio
+async def test_post_device_publishes_config_changed(app, store, bus):
+    received = []
+    bus.subscribe("config.changed", lambda e: received.append(e))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(
+            "/api/devices/OEQ7:1",
+            json={"exported": True, "hk_type": "switch", "name": "Lamp"},
+        )
+    assert r.status_code == 200
+    assert received == [{"address": "OEQ7:1"}]

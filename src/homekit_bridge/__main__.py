@@ -179,6 +179,7 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
         solar_state=solar_state,
         bridge_state=bridge_state,
         settings=settings,
+        bus=bus,
     )
 
     return AppComponents(
