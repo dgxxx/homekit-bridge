@@ -154,3 +154,95 @@ def test_build_with_contact_export_registers_accessory(driver, store, bus, ccu3)
     assert len(bridge.accessories) == 1
     acc = bridge.accessories[0]
     assert acc.get_service("ContactSensor") is not None
+
+
+def _sync_reconcile(bridge, driver, monkeypatch):
+    """Make reconcile() apply synchronously and count config_changed calls."""
+    calls = {"config_changed": 0}
+    monkeypatch.setattr(driver.loop, "call_soon_threadsafe",
+                        lambda fn, *a: fn(*a))
+    monkeypatch.setattr(driver, "config_changed",
+                        lambda: calls.__setitem__("config_changed",
+                                                  calls["config_changed"] + 1))
+    return calls
+
+
+def test_reconcile_adds_newly_exported_accessory(driver, store, bus, ccu3, monkeypatch):
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    assert len(bridge.accessories) == 0
+
+    calls = _sync_reconcile(bridge, driver, monkeypatch)
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    bridge.reconcile()
+
+    assert len(bridge.accessories) == 1
+    assert calls["config_changed"] == 1
+
+
+def test_reconcile_removes_unexported_accessory(driver, store, bus, ccu3, monkeypatch):
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    assert len(bridge.accessories) == 1
+
+    calls = _sync_reconcile(bridge, driver, monkeypatch)
+    store.set_mapping("OEQ1:1", exported=False, hk_type=HKType.SWITCH, name="Lamp")
+    bridge.reconcile()
+
+    assert len(bridge.accessories) == 0
+    assert calls["config_changed"] == 1
+
+
+def test_reconcile_replaces_on_hk_type_change(driver, store, bus, ccu3, monkeypatch):
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="Dev")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    first = bridge.accessories[0]
+
+    calls = _sync_reconcile(bridge, driver, monkeypatch)
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.OUTLET, name="Dev")
+    bridge.reconcile()
+
+    assert len(bridge.accessories) == 1
+    new = bridge.accessories[0]
+    assert new is not first
+    assert new.get_service("Outlet") is not None
+    assert calls["config_changed"] == 1
+
+
+def test_reconcile_name_only_change_is_noop(driver, store, bus, ccu3, monkeypatch):
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="Old")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    first = bridge.accessories[0]
+
+    calls = _sync_reconcile(bridge, driver, monkeypatch)
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="New")
+    bridge.reconcile()
+
+    assert bridge.accessories[0] is first
+    assert calls["config_changed"] == 0
+
+
+def test_reconcile_no_change_does_not_call_config_changed(driver, store, bus, ccu3, monkeypatch):
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+
+    calls = _sync_reconcile(bridge, driver, monkeypatch)
+    bridge.reconcile()
+
+    assert calls["config_changed"] == 0
+
+
+def test_config_changed_event_triggers_reconcile(driver, store, bus, ccu3, monkeypatch):
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+
+    calls = _sync_reconcile(bridge, driver, monkeypatch)
+    store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    bus.publish("config.changed", {"address": "OEQ1:1"})
+
+    assert len(bridge.accessories) == 1
+    assert calls["config_changed"] == 1
