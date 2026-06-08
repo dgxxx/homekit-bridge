@@ -145,3 +145,20 @@ def test_bridge_state_paired_reflects_hap_driver(tmp_path, monkeypatch):
         b"12345678-1234-1234-1234-123456789abc", b"\x00" * 32, b"\x01"
     )
     assert bridge_state.paired is True
+
+
+def test_create_app_receives_bus(tmp_path, monkeypatch):
+    """build() must pass the EventBus into create_app so POSTs can publish."""
+    import homekit_bridge.__main__ as m
+    captured = {}
+
+    def fake_create_app(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(m, "create_app", fake_create_app)
+    monkeypatch.setenv("STATE_DIR", str(tmp_path))
+    m.build(fakes={"mqtt_client": FakeMqttClient()})
+
+    assert "bus" in captured
+    assert captured["bus"] is not None

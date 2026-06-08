@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from homekit_bridge.config import ConfigStore
+from homekit_bridge.events import EventBus
 from homekit_bridge.mapper.device_mapper import auto_hk_type
 from homekit_bridge.models import HKType, PVData
 from homekit_bridge.settings import Settings
@@ -109,6 +110,7 @@ def create_app(
     solar_state: Any,
     bridge_state: Any,
     settings: Settings,
+    bus: EventBus,
 ) -> FastAPI:
     """Return the configured FastAPI application."""
 
@@ -152,6 +154,7 @@ def create_app(
             hk_type=hk_type,
             name=body.name,
         )
+        bus.publish("config.changed", {"address": address})
         return {"status": "ok", "address": address}
 
     # ------------------------------------------------------------------
