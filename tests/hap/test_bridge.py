@@ -157,7 +157,11 @@ def test_build_with_contact_export_registers_accessory(driver, store, bus, ccu3)
 
 
 def _sync_reconcile(bridge, driver, monkeypatch):
-    """Make reconcile() apply synchronously and count config_changed calls."""
+    """Run reconcile()'s loop-marshalled _apply synchronously and count config_changed.
+
+    NOTE: collapses the web-thread/driver-loop boundary into one thread, so it
+    verifies the functional contract but cannot surface cross-thread races by design.
+    """
     calls = {"config_changed": 0}
     monkeypatch.setattr(driver.loop, "call_soon_threadsafe",
                         lambda fn, *a: fn(*a))

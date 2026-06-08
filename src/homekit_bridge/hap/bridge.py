@@ -132,13 +132,25 @@ class HomeKitBridge:
             self.hap_bridge.add_accessory(acc)
 
     def reconcile(self, _event: Any = None) -> None:
-        """Diff exported mappings against live accessories; apply on the driver loop.
+        """Schedule a reconcile of exported mappings against live accessories.
 
-        Reacts to export (add), un-export (remove) and hk_type change (replace).
-        Name-only changes are intentionally ignored so HomeKit's per-AID room/name
-        assignment is preserved (see design doc).
+        Reads the desired exported set here (caller/bus thread; SQLite is
+        lock-protected) and marshals the diff + mutation onto the driver event
+        loop, which is the single owner of ``self._exported`` / ``self._addr_index``
+        and of the HAP ``accessories`` dict — so there are no cross-thread races on
+        the bridge's bookkeeping.
         """
         desired = {m["address"]: m for m in self._store.list_exported()}
+        self._driver.loop.call_soon_threadsafe(self._apply, desired)
+
+    def _apply(self, desired: dict[str, dict]) -> None:
+        """Diff *desired* against live accessories and mutate the HAP bridge.
+
+        Runs on the driver event loop (sole owner of the bookkeeping dicts and the
+        HAP ``accessories`` dict). Reacts to export (add), un-export (remove) and
+        hk_type change (replace). Name-only changes are intentionally ignored so
+        HomeKit's per-AID room/name assignment is preserved (see design doc).
+        """
         to_add: list[dict] = []
         to_remove: list[str] = []
         for addr, m in desired.items():
@@ -148,15 +160,10 @@ class HomeKitBridge:
             elif cur.get("hk_type") != m.get("hk_type"):
                 to_remove.append(addr)
                 to_add.append(m)
-        for addr in self._exported:
+        for addr in list(self._exported):
             if addr not in desired:
                 to_remove.append(addr)
-        if not to_add and not to_remove:
-            return
-        self._driver.loop.call_soon_threadsafe(self._apply, to_add, to_remove)
 
-    def _apply(self, to_add: list[dict], to_remove: list[str]) -> None:
-        """Mutate the HAP bridge.  Runs on the driver event loop (race-free)."""
         changed = False
         for addr in to_remove:
             acc = self._addr_index.pop(addr, None)
