@@ -7,6 +7,7 @@ import pytest
 from pyhap.accessory_driver import AccessoryDriver
 
 from homekit_bridge.hap.accessories import (
+    make_accessory,
     SwitchAccessory,
     OutletAccessory,
     LightbulbAccessory,
@@ -16,7 +17,6 @@ from homekit_bridge.hap.accessories import (
     TemperatureSensorAccessory,
     HumiditySensorAccessory,
     MotionSensorAccessory,
-    # PV accessories
     LightSensorAccessory,
     EvePowerAccessory,
     BatteryAccessory,
@@ -244,3 +244,28 @@ def test_producing_accessory_update_state_false(driver):
     acc.update_state(on=False)
     char = acc.get_service("Switch").get_characteristic("On")
     assert char.value is False
+
+
+# ---------------------------------------------------------------------------
+# make_accessory factory — on_set handling
+# ---------------------------------------------------------------------------
+
+def test_make_accessory_sensor_ignores_on_set(driver):
+    # Read-only sensors don't accept on_set; passing it must NOT raise.
+    acc = make_accessory(driver=driver, hk_type="contact", name="Door", on_set=lambda v: None)
+    assert isinstance(acc, ContactSensorAccessory)
+
+
+def test_make_accessory_switch_wires_on_set(driver):
+    received = []
+    acc = make_accessory(
+        driver=driver, hk_type="switch", name="Lamp", on_set=lambda v: received.append(v)
+    )
+    assert isinstance(acc, SwitchAccessory)
+    char = acc.get_service("Switch").get_characteristic("On")
+    char.client_update_value(True)
+    assert received == [True]
+
+
+def test_make_accessory_unknown_type_returns_none(driver):
+    assert make_accessory(driver=driver, hk_type="nonsense", name="x") is None

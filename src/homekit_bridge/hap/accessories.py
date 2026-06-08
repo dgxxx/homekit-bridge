@@ -9,6 +9,7 @@ PV accessories (LightSensor, EvePower, Battery, Producing) mirror the four
 spec kinds returned by ``pv_accessory_specs``.
 """
 
+import inspect
 import logging
 from typing import Any, Callable, Optional
 
@@ -337,13 +338,16 @@ def make_accessory(
 ) -> Optional[Accessory]:
     """Instantiate the correct accessory class for *hk_type*.
 
-    Returns ``None`` for unknown types so callers can skip gracefully.
+    ``on_set`` is only forwarded to accessory classes whose constructor accepts
+    it; read-only sensors (contact/temperature/humidity/motion) ignore it
+    instead of raising.  Returns ``None`` for unknown types so callers can skip
+    gracefully.
     """
     cls = _FACTORY_MAP.get(hk_type)
     if cls is None:
         logger.warning("Unknown HKType '%s' for accessory '%s'", hk_type, name)
         return None
     kwargs: dict[str, Any] = {"driver": driver, "name": name}
-    if on_set is not None:
+    if on_set is not None and "on_set" in inspect.signature(cls.__init__).parameters:
         kwargs["on_set"] = on_set
     return cls(**kwargs)

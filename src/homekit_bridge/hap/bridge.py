@@ -103,12 +103,16 @@ class HomeKitBridge:
                         logger.exception("set_value failed for %s", addr)
                 return on_set
 
-            acc = make_accessory(
-                driver=self._driver,
-                hk_type=hk_type.value,
-                name=name,
-                on_set=_make_setter(address),
-            )
+            try:
+                acc = make_accessory(
+                    driver=self._driver,
+                    hk_type=hk_type.value,
+                    name=name,
+                    on_set=_make_setter(address),
+                )
+            except Exception:
+                logger.exception("Failed to build accessory for %s", address)
+                continue
             if acc is None:
                 continue
 

@@ -144,3 +144,13 @@ def test_event_for_non_exported_address_is_ignored(driver, store, bus, ccu3):
     bridge.build()
     # Should not raise
     bus.publish("ccu3.state", {"address": "UNKNOWN:99", "key": "STATE", "value": True})
+
+
+def test_build_with_contact_export_registers_accessory(driver, store, bus, ccu3):
+    store.set_mapping("0000DD898F35C7:1", exported=True, hk_type=HKType.CONTACT,
+                      name="Tür Arbeitszimmer")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()  # must not raise (Bug B)
+    assert len(bridge.accessories) == 1
+    acc = bridge.accessories[0]
+    assert acc.get_service("ContactSensor") is not None
