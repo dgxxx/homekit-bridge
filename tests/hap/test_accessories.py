@@ -41,15 +41,6 @@ def driver(tmp_path_factory):
 # Switch
 # ---------------------------------------------------------------------------
 
-def test_switch_on_set_callback(driver):
-    received = []
-    acc = SwitchAccessory(driver, "TestSwitch", on_set=lambda v: received.append(v))
-    # Simulate HomeKit SET On=True
-    char = acc.get_service("Switch").get_characteristic("On")
-    char.client_update_value(True)
-    assert received == [True]
-
-
 def test_switch_update_state(driver):
     acc = SwitchAccessory(driver, "TestSwitch2")
     acc.update_state(True)
@@ -61,25 +52,9 @@ def test_switch_update_state(driver):
 # Outlet
 # ---------------------------------------------------------------------------
 
-def test_outlet_on_set_callback(driver):
-    received = []
-    acc = OutletAccessory(driver, "TestOutlet", on_set=lambda v: received.append(v))
-    char = acc.get_service("Outlet").get_characteristic("On")
-    char.client_update_value(True)
-    assert received == [True]
-
-
 # ---------------------------------------------------------------------------
 # Lightbulb
 # ---------------------------------------------------------------------------
-
-def test_lightbulb_on_set_callback(driver):
-    received = []
-    acc = LightbulbAccessory(driver, "TestBulb", on_set=lambda v: received.append(v))
-    char = acc.get_service("Lightbulb").get_characteristic("On")
-    char.client_update_value(False)
-    assert received == [False]
-
 
 def test_lightbulb_update_state(driver):
     acc = LightbulbAccessory(driver, "TestBulb2")
@@ -93,23 +68,6 @@ def test_lightbulb_update_state(driver):
 # Cover (WindowCovering)
 # ---------------------------------------------------------------------------
 
-def test_cover_target_position_callback(driver):
-    received = []
-    acc = CoverAccessory(driver, "TestCover", on_set=lambda v: received.append(v))
-    char = acc.get_service("WindowCovering").get_characteristic("TargetPosition")
-    char.client_update_value(75)
-    assert received == [75]
-
-
-def test_cover_position_range(driver):
-    received = []
-    acc = CoverAccessory(driver, "TestCover2", on_set=lambda v: received.append(v))
-    char = acc.get_service("WindowCovering").get_characteristic("TargetPosition")
-    char.client_update_value(0)
-    char.client_update_value(100)
-    assert received == [0, 100]
-
-
 def test_cover_update_state(driver):
     acc = CoverAccessory(driver, "TestCover3")
     acc.update_state(current_position=50, target_position=50)
@@ -120,14 +78,6 @@ def test_cover_update_state(driver):
 # ---------------------------------------------------------------------------
 # Thermostat
 # ---------------------------------------------------------------------------
-
-def test_thermostat_target_temp_callback(driver):
-    received = []
-    acc = ThermostatAccessory(driver, "TestThermo", on_set=lambda v: received.append(v))
-    char = acc.get_service("Thermostat").get_characteristic("TargetTemperature")
-    char.client_update_value(21.5)
-    assert received == [pytest.approx(21.5)]
-
 
 def test_thermostat_update_state(driver):
     acc = ThermostatAccessory(driver, "TestThermo2")
@@ -247,24 +197,19 @@ def test_producing_accessory_update_state_false(driver):
 
 
 # ---------------------------------------------------------------------------
-# make_accessory factory — on_set handling
+# make_accessory factory
 # ---------------------------------------------------------------------------
 
-def test_make_accessory_sensor_ignores_on_set(driver):
-    # Read-only sensors don't accept on_set; passing it must NOT raise.
-    acc = make_accessory(driver=driver, hk_type="contact", name="Door", on_set=lambda v: None)
+def test_make_accessory_builds_contact_without_on_set(driver):
+    from homekit_bridge.hap.accessories import ContactSensorAccessory
+    acc = make_accessory(driver=driver, hk_type="contact", name="Door")
     assert isinstance(acc, ContactSensorAccessory)
 
 
-def test_make_accessory_switch_wires_on_set(driver):
-    received = []
-    acc = make_accessory(
-        driver=driver, hk_type="switch", name="Lamp", on_set=lambda v: received.append(v)
-    )
+def test_make_accessory_builds_switch(driver):
+    acc = make_accessory(driver=driver, hk_type="switch", name="Lamp")
     assert isinstance(acc, SwitchAccessory)
-    char = acc.get_service("Switch").get_characteristic("On")
-    char.client_update_value(True)
-    assert received == [True]
+    assert set(acc.writable_characteristics()) == {"on"}
 
 
 def test_make_accessory_unknown_type_returns_none(driver):

@@ -1,17 +1,16 @@
 """HAP accessory factory classes for homekit-bridge.
 
 Each class wraps a pyhap Accessory, wires a HomeKit service, and exposes:
-- ``on_set`` callback (called when HomeKit sends a SET command)
 - ``on_get`` callback (optional, for read-on-demand)
 - ``update_state(...)`` method to push values from event-bus events
+- ``writable_characteristics()`` mapping, wired by the bridge for SET commands
 
 PV accessories (LightSensor, EvePower, Battery, Producing) mirror the four
 spec kinds returned by ``pv_accessory_specs``.
 """
 
-import inspect
 import logging
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 from pyhap.accessory import Accessory
 from pyhap.accessory_driver import AccessoryDriver
@@ -19,15 +18,6 @@ from pyhap.accessory_driver import AccessoryDriver
 logger = logging.getLogger(__name__)
 
 _NOOP = lambda *a, **kw: None  # noqa: E731
-
-
-# ---------------------------------------------------------------------------
-# Base helper
-# ---------------------------------------------------------------------------
-
-def _wire_setter(char, on_set: Callable) -> None:
-    """Attach *on_set* as the characteristic's setter_callback."""
-    char.setter_callback = on_set
 
 
 # ---------------------------------------------------------------------------
@@ -43,14 +33,11 @@ class SwitchAccessory(Accessory):
         self,
         driver: AccessoryDriver,
         name: str,
-        on_set: Optional[Callable[[bool], None]] = None,
         on_get: Optional[Callable[[], bool]] = None,
     ) -> None:
         super().__init__(driver, name)
         svc = self.add_preload_service("Switch")
         self._char_on = svc.get_characteristic("On")
-        if on_set:
-            _wire_setter(self._char_on, on_set)
         if on_get:
             self._char_on.getter_callback = on_get
 
@@ -70,7 +57,6 @@ class OutletAccessory(Accessory):
         self,
         driver: AccessoryDriver,
         name: str,
-        on_set: Optional[Callable[[bool], None]] = None,
         on_get: Optional[Callable[[], bool]] = None,
     ) -> None:
         super().__init__(driver, name)
@@ -78,8 +64,6 @@ class OutletAccessory(Accessory):
         self._char_on = svc.get_characteristic("On")
         self._char_in_use = svc.get_characteristic("OutletInUse")
         self._char_in_use.set_value(True)  # default: outlet is in use
-        if on_set:
-            _wire_setter(self._char_on, on_set)
         if on_get:
             self._char_on.getter_callback = on_get
 
@@ -99,17 +83,11 @@ class LightbulbAccessory(Accessory):
         self,
         driver: AccessoryDriver,
         name: str,
-        on_set: Optional[Callable[[bool], None]] = None,
-        brightness_set: Optional[Callable[[int], None]] = None,
     ) -> None:
         super().__init__(driver, name)
         svc = self.add_preload_service("Lightbulb", chars=["On", "Brightness"])
         self._char_on = svc.get_characteristic("On")
         self._char_brightness = svc.get_characteristic("Brightness")
-        if on_set:
-            _wire_setter(self._char_on, on_set)
-        if brightness_set:
-            _wire_setter(self._char_brightness, brightness_set)
 
     def update_state(self, on: Optional[bool] = None, brightness: Optional[int] = None) -> None:
         if on is not None:
@@ -130,7 +108,6 @@ class CoverAccessory(Accessory):
         self,
         driver: AccessoryDriver,
         name: str,
-        on_set: Optional[Callable[[int], None]] = None,
     ) -> None:
         super().__init__(driver, name)
         svc = self.add_preload_service("WindowCovering")
@@ -138,8 +115,6 @@ class CoverAccessory(Accessory):
         self._char_target = svc.get_characteristic("TargetPosition")
         self._char_state = svc.get_characteristic("PositionState")
         self._char_state.set_value(2)  # 2 = stopped
-        if on_set:
-            _wire_setter(self._char_target, on_set)
 
     def update_state(
         self,
@@ -164,7 +139,6 @@ class ThermostatAccessory(Accessory):
         self,
         driver: AccessoryDriver,
         name: str,
-        on_set: Optional[Callable[[float], None]] = None,
     ) -> None:
         super().__init__(driver, name)
         svc = self.add_preload_service("Thermostat", chars=["CurrentRelativeHumidity"])
@@ -181,8 +155,6 @@ class ThermostatAccessory(Accessory):
         # Present as a heating thermostat (real mode mapping is out of scope)
         self._char_hc_current.set_value(1)
         self._char_hc_target.set_value(1)
-        if on_set:
-            _wire_setter(self._char_target, on_set)
 
     def update_state(
         self,
@@ -360,23 +332,14 @@ def make_accessory(
     driver: AccessoryDriver,
     hk_type: str,
     name: str,
-    on_set: Optional[Callable] = None,
 ) -> Optional[Accessory]:
     """Instantiate the correct accessory class for *hk_type*.
 
-    ``on_set`` is only forwarded to accessory classes whose constructor accepts
-    it; read-only sensors (contact/temperature/humidity/motion) ignore it
-    instead of raising.  Returns ``None`` for unknown types so callers can skip
-    gracefully.
+    Returns ``None`` for unknown types so callers can skip gracefully.  Writable
+    characteristics are wired by the bridge via ``writable_characteristics()``.
     """
     cls = _FACTORY_MAP.get(hk_type)
     if cls is None:
         logger.warning("Unknown HKType '%s' for accessory '%s'", hk_type, name)
         return None
-    kwargs: dict[str, Any] = {"driver": driver, "name": name}
-    if on_set is not None:
-        if "on_set" in inspect.signature(cls.__init__).parameters:
-            kwargs["on_set"] = on_set
-        else:
-            logger.debug("on_set ignored for %s ('%s'): class is read-only", hk_type, name)
-    return cls(**kwargs)
+    return cls(driver=driver, name=name)
