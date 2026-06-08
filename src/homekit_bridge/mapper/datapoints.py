@@ -49,7 +49,7 @@ WRITE_DATAPOINTS: dict[HKType, dict[str, DP]] = {
 }
 
 
-def read_update(hk_type: HKType, key: str, value):
+def read_update(hk_type: HKType, key: str, value: int | float | bool) -> dict | None:
     """Return ``{update_kwarg: value*scale}`` for a HM datapoint, or None if irrelevant."""
     dp = READ_DATAPOINTS.get(hk_type, {}).get(key)
     if dp is None:
