@@ -282,3 +282,13 @@ def test_switch_set_publishes_state(driver, store, bus, ccu3):
     char = bridge.accessories[0].get_service("Switch").get_characteristic("On")
     char.client_update_value(True)
     assert ("SW:1", "STATE", True) in ccu3.set_calls
+
+
+def test_cover_level_updates_position(driver, store, bus, ccu3):
+    store.set_mapping("CV:1", exported=True, hk_type=HKType.COVER, name="Blind")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    bus.publish("ccu3.state", {"address": "CV:1", "key": "LEVEL", "value": 0.5})
+    svc = bridge.accessories[0].get_service("WindowCovering")
+    assert svc.get_characteristic("CurrentPosition").value == 50.0
+    assert svc.get_characteristic("TargetPosition").value == 50.0

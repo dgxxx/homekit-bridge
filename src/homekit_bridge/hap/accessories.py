@@ -118,7 +118,11 @@ class CoverAccessory(Accessory):
         self,
         current_position: Optional[int] = None,
         target_position: Optional[int] = None,
+        position: Optional[int] = None,
     ) -> None:
+        if position is not None:
+            self._char_current.set_value(position)
+            self._char_target.set_value(position)
         if current_position is not None:
             self._char_current.set_value(current_position)
         if target_position is not None:

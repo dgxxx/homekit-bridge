@@ -242,3 +242,11 @@ def test_writable_characteristics_per_type(driver):
     assert set(LightbulbAccessory(driver, "l").writable_characteristics()) == {"on", "brightness"}
     assert set(CoverAccessory(driver, "c").writable_characteristics()) == {"position"}
     assert set(ThermostatAccessory(driver, "t").writable_characteristics()) == {"target_temp"}
+
+
+def test_cover_update_state_position_sets_both(driver):
+    acc = CoverAccessory(driver, "Blind")
+    acc.update_state(position=50.0)
+    svc = acc.get_service("WindowCovering")
+    assert svc.get_characteristic("CurrentPosition").value == 50.0
+    assert svc.get_characteristic("TargetPosition").value == 50.0
