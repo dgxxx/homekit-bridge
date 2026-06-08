@@ -269,3 +269,31 @@ def test_make_accessory_switch_wires_on_set(driver):
 
 def test_make_accessory_unknown_type_returns_none(driver):
     assert make_accessory(driver=driver, hk_type="nonsense", name="x") is None
+
+
+# ---------------------------------------------------------------------------
+# writable_characteristics() + thermostat humidity / range
+# ---------------------------------------------------------------------------
+
+def test_thermostat_has_humidity_characteristic(driver):
+    acc = ThermostatAccessory(driver, "Thermo")
+    acc.update_state(current_temp=25.0, target_temp=4.5, humidity=40)
+    svc = acc.get_service("Thermostat")
+    assert svc.get_characteristic("CurrentTemperature").value == 25.0
+    assert svc.get_characteristic("TargetTemperature").value == 4.5
+    assert svc.get_characteristic("CurrentRelativeHumidity").value == 40
+
+
+def test_thermostat_target_temperature_allows_low_setpoint(driver):
+    acc = ThermostatAccessory(driver, "Thermo")
+    # 4.5 °C must be accepted (HmIP frost) — default HAP min is 10
+    acc.update_state(target_temp=4.5)
+    assert acc.get_service("Thermostat").get_characteristic("TargetTemperature").value == 4.5
+
+
+def test_writable_characteristics_per_type(driver):
+    assert set(SwitchAccessory(driver, "s").writable_characteristics()) == {"on"}
+    assert set(OutletAccessory(driver, "o").writable_characteristics()) == {"on"}
+    assert set(LightbulbAccessory(driver, "l").writable_characteristics()) == {"on", "brightness"}
+    assert set(CoverAccessory(driver, "c").writable_characteristics()) == {"position"}
+    assert set(ThermostatAccessory(driver, "t").writable_characteristics()) == {"target_temp"}

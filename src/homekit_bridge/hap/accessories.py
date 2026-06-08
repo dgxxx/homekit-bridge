@@ -57,6 +57,9 @@ class SwitchAccessory(Accessory):
     def update_state(self, on: bool) -> None:
         self._char_on.set_value(on)
 
+    def writable_characteristics(self) -> dict:
+        return {"on": self._char_on}
+
 
 class OutletAccessory(Accessory):
     """Outlet (smart plug)."""
@@ -82,6 +85,9 @@ class OutletAccessory(Accessory):
 
     def update_state(self, on: bool) -> None:
         self._char_on.set_value(on)
+
+    def writable_characteristics(self) -> dict:
+        return {"on": self._char_on}
 
 
 class LightbulbAccessory(Accessory):
@@ -110,6 +116,9 @@ class LightbulbAccessory(Accessory):
             self._char_on.set_value(on)
         if brightness is not None:
             self._char_brightness.set_value(brightness)
+
+    def writable_characteristics(self) -> dict:
+        return {"on": self._char_on, "brightness": self._char_brightness}
 
 
 class CoverAccessory(Accessory):
@@ -142,6 +151,9 @@ class CoverAccessory(Accessory):
         if target_position is not None:
             self._char_target.set_value(target_position)
 
+    def writable_characteristics(self) -> dict:
+        return {"position": self._char_target}
+
 
 class ThermostatAccessory(Accessory):
     """Thermostat (current + target temperature)."""
@@ -155,12 +167,20 @@ class ThermostatAccessory(Accessory):
         on_set: Optional[Callable[[float], None]] = None,
     ) -> None:
         super().__init__(driver, name)
-        svc = self.add_preload_service("Thermostat")
+        svc = self.add_preload_service("Thermostat", chars=["CurrentRelativeHumidity"])
         self._char_current = svc.get_characteristic("CurrentTemperature")
         self._char_target = svc.get_characteristic("TargetTemperature")
+        self._char_humidity = svc.get_characteristic("CurrentRelativeHumidity")
         self._char_hc_current = svc.get_characteristic("CurrentHeatingCoolingState")
         self._char_hc_target = svc.get_characteristic("TargetHeatingCoolingState")
         self._char_units = svc.get_characteristic("TemperatureDisplayUnits")
+        # HmIP setpoint range (default HAP min 10 would reject frost-protection 4.5 °C)
+        self._char_target.override_properties(
+            properties={"minValue": 4.5, "maxValue": 30.5, "minStep": 0.5}
+        )
+        # Present as a heating thermostat (real mode mapping is out of scope)
+        self._char_hc_current.set_value(1)
+        self._char_hc_target.set_value(1)
         if on_set:
             _wire_setter(self._char_target, on_set)
 
@@ -168,11 +188,17 @@ class ThermostatAccessory(Accessory):
         self,
         current_temp: Optional[float] = None,
         target_temp: Optional[float] = None,
+        humidity: Optional[float] = None,
     ) -> None:
         if current_temp is not None:
             self._char_current.set_value(current_temp)
         if target_temp is not None:
             self._char_target.set_value(target_temp)
+        if humidity is not None:
+            self._char_humidity.set_value(humidity)
+
+    def writable_characteristics(self) -> dict:
+        return {"target_temp": self._char_target}
 
 
 class ContactSensorAccessory(Accessory):
