@@ -115,6 +115,10 @@ class HomeKitBridge:
             logger.info("Skipping %s: no HKType resolved", address)
             return None
         acc = make_accessory(driver=self._driver, hk_type=hk_type.value, name=name)
+        if acc is not None:
+            # Stable AID per address: HomeKit requires AIDs to survive restarts,
+            # otherwise paired controllers see a reshuffled accessory database.
+            acc.aid = self._store.get_or_create_aid(address)
         self._wire_writables(acc, address, hk_type)
         return acc
 
@@ -140,7 +144,9 @@ class HomeKitBridge:
             "battery": BatteryAccessory(drv, "PV Battery"),
             "producing": ProducingAccessory(drv, "PV Producing"),
         }
-        for acc in self.pv_accessories.values():
+        for kind, acc in self.pv_accessories.items():
+            # Pseudo-address keeps PV AIDs stable alongside CCU3 accessories.
+            acc.aid = self._store.get_or_create_aid(f"pv:{kind}")
             self.hap_bridge.add_accessory(acc)
 
     def reconcile(self, _event: Any = None) -> None:

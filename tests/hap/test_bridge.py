@@ -327,3 +327,68 @@ def test_cover_level_updates_position(driver, store, bus, ccu3):
     svc = bridge.accessories[0].get_service("WindowCovering")
     assert svc.get_characteristic("CurrentPosition").value == 50.0
     assert svc.get_characteristic("TargetPosition").value == 50.0
+
+
+# ---------------------------------------------------------------------------
+# AID stability — accessory IDs must survive restarts and new exports
+# ---------------------------------------------------------------------------
+
+def _aids_by_name(bridge):
+    return {acc.display_name: acc.aid for acc in bridge.accessories}
+
+
+def test_aids_survive_restart_with_new_device_sorting_first(tmp_path, driver, store, bus, ccu3):
+    store.set_mapping("B:1", exported=True, hk_type=HKType.SWITCH, name="B")
+    store.set_mapping("C:1", exported=True, hk_type=HKType.OUTLET, name="C")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    first_aids = _aids_by_name(bridge)
+
+    # "Restart": new driver + bridge over the same store, with a new export
+    # whose address sorts before the existing ones.
+    store.set_mapping("A:1", exported=True, hk_type=HKType.SWITCH, name="A")
+    driver2 = AccessoryDriver(port=0, persist_file=str(tmp_path / "restart.state"))
+    try:
+        bridge2 = HomeKitBridge(driver=driver2, config_store=store, ccu3_adapter=ccu3, bus=bus)
+        bridge2.build()
+        second_aids = _aids_by_name(bridge2)
+        assert second_aids["B"] == first_aids["B"]
+        assert second_aids["C"] == first_aids["C"]
+        # The new device gets a fresh AID, not one of the existing ones
+        assert second_aids["A"] not in (first_aids["B"], first_aids["C"])
+    finally:
+        driver2.stop()
+
+
+def test_pv_accessory_aids_survive_restart(tmp_path, driver, store, bus, ccu3):
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    first = {kind: acc.aid for kind, acc in bridge.pv_accessories.items()}
+
+    store.set_mapping("A:1", exported=True, hk_type=HKType.SWITCH, name="A")
+    driver2 = AccessoryDriver(port=0, persist_file=str(tmp_path / "restart.state"))
+    try:
+        bridge2 = HomeKitBridge(driver=driver2, config_store=store, ccu3_adapter=ccu3, bus=bus)
+        bridge2.build()
+        second = {kind: acc.aid for kind, acc in bridge2.pv_accessories.items()}
+        assert second == first
+    finally:
+        driver2.stop()
+
+
+def test_reconcile_added_accessory_keeps_aid_after_restart(
+        tmp_path, driver, store, bus, ccu3, monkeypatch):
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    _sync_reconcile(bridge, driver, monkeypatch)
+    store.set_mapping("NEW:1", exported=True, hk_type=HKType.SWITCH, name="New")
+    bridge.reconcile()
+    runtime_aid = _aids_by_name(bridge)["New"]
+
+    driver2 = AccessoryDriver(port=0, persist_file=str(tmp_path / "restart.state"))
+    try:
+        bridge2 = HomeKitBridge(driver=driver2, config_store=store, ccu3_adapter=ccu3, bus=bus)
+        bridge2.build()
+        assert _aids_by_name(bridge2)["New"] == runtime_aid
+    finally:
+        driver2.stop()

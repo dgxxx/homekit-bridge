@@ -17,6 +17,13 @@ CREATE TABLE IF NOT EXISTS mappings (
 )
 """
 
+_CREATE_AIDS_TABLE = """
+CREATE TABLE IF NOT EXISTS aids (
+    address TEXT PRIMARY KEY,
+    aid     INTEGER NOT NULL UNIQUE
+)
+"""
+
 _UPSERT = """
 INSERT INTO mappings (address, exported, hk_type, name)
 VALUES (?, ?, ?, ?)
@@ -65,6 +72,7 @@ class ConfigStore:
         self._lock = threading.Lock()
         with self._lock:
             self._conn.execute(_CREATE_TABLE)
+            self._conn.execute(_CREATE_AIDS_TABLE)
             self._conn.commit()
 
     def set_mapping(
@@ -97,6 +105,30 @@ class ConfigStore:
                 "SELECT * FROM mappings WHERE exported = 1 ORDER BY address"
             ).fetchall()
         return [_row_to_dict(row) for row in rows]
+
+    def get_or_create_aid(self, address: str) -> int:
+        """Return the persistent HomeKit accessory ID for *address*.
+
+        HomeKit requires AIDs to stay stable for the lifetime of a pairing and
+        never be reused.  Allocation is monotonic (rows are never deleted),
+        starts at 2 (1 is the bridge itself) and skips 7 (unsupported in
+        HAP-python, issue #61).
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT aid FROM aids WHERE address = ?", (address,)
+            ).fetchone()
+            if row is not None:
+                return row["aid"]
+            top = self._conn.execute("SELECT MAX(aid) AS m FROM aids").fetchone()["m"]
+            aid = (top or 1) + 1
+            if aid == 7:
+                aid = 8
+            self._conn.execute(
+                "INSERT INTO aids (address, aid) VALUES (?, ?)", (address, aid)
+            )
+            self._conn.commit()
+            return aid
 
     def list_all(self) -> list[dict[str, Any]]:
         """Return every stored mapping (exported and non-exported)."""

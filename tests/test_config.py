@@ -50,3 +50,37 @@ def test_unknown_hktype_in_db_returns_none(tmp_path):
     m = store.get_mapping("BAD:1")
     assert m is not None
     assert m["hk_type"] is None   # unknown value → None, not ValueError
+
+
+# ---------------------------------------------------------------------------
+# AID persistence — HomeKit accessory IDs must stay stable per address
+# ---------------------------------------------------------------------------
+
+def test_aid_allocation_starts_at_2_and_increments(tmp_path):
+    store = ConfigStore(tmp_path / "c.db")
+    assert store.get_or_create_aid("A:1") == 2
+    assert store.get_or_create_aid("B:1") == 3
+
+
+def test_aid_is_stable_for_same_address(tmp_path):
+    store = ConfigStore(tmp_path / "c.db")
+    first = store.get_or_create_aid("A:1")
+    store.get_or_create_aid("B:1")
+    assert store.get_or_create_aid("A:1") == first
+
+
+def test_aid_skips_7(tmp_path):
+    # pyhap quirk: AID 7 is unsupported (HAP-python issue #61)
+    store = ConfigStore(tmp_path / "c.db")
+    aids = [store.get_or_create_aid(f"D{i}:1") for i in range(7)]
+    assert aids == [2, 3, 4, 5, 6, 8, 9]
+
+
+def test_aid_persists_across_reopen(tmp_path):
+    db = tmp_path / "c.db"
+    store = ConfigStore(db)
+    aid_a = store.get_or_create_aid("A:1")
+    aid_b = store.get_or_create_aid("B:1")
+    reopened = ConfigStore(db)
+    assert reopened.get_or_create_aid("A:1") == aid_a
+    assert reopened.get_or_create_aid("B:1") == aid_b
