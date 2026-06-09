@@ -222,18 +222,53 @@ def test_make_accessory_unknown_type_returns_none(driver):
 
 def test_thermostat_has_humidity_characteristic(driver):
     acc = ThermostatAccessory(driver, "Thermo")
-    acc.update_state(current_temp=25.0, target_temp=4.5, humidity=40)
+    acc.update_state(current_temp=25.0, target_temp=21.0, humidity=40)
     svc = acc.get_service("Thermostat")
     assert svc.get_characteristic("CurrentTemperature").value == 25.0
-    assert svc.get_characteristic("TargetTemperature").value == 4.5
+    assert svc.get_characteristic("TargetTemperature").value == 21.0
     assert svc.get_characteristic("CurrentRelativeHumidity").value == 40
 
 
-def test_thermostat_target_temperature_allows_low_setpoint(driver):
+def test_thermostat_frost_setpoint_maps_to_off(driver):
     acc = ThermostatAccessory(driver, "Thermo")
-    # 4.5 °C must be accepted (HmIP frost) — default HAP min is 10
+    acc.update_state(target_temp=21.0)
+    # HmIP frost protection (4.5 °C) == "off"; the last heat setpoint is kept
     acc.update_state(target_temp=4.5)
-    assert acc.get_service("Thermostat").get_characteristic("TargetTemperature").value == 4.5
+    svc = acc.get_service("Thermostat")
+    assert svc.get_characteristic("TargetHeatingCoolingState").value == 0
+    assert svc.get_characteristic("CurrentHeatingCoolingState").value == 0
+    assert svc.get_characteristic("TargetTemperature").value == 21.0
+
+
+def test_thermostat_normal_setpoint_maps_to_heat(driver):
+    acc = ThermostatAccessory(driver, "Thermo")
+    acc.update_state(target_temp=4.5)
+    acc.update_state(target_temp=22.5)
+    svc = acc.get_service("Thermostat")
+    assert svc.get_characteristic("TargetHeatingCoolingState").value == 1
+    assert svc.get_characteristic("CurrentHeatingCoolingState").value == 1
+    assert svc.get_characteristic("TargetTemperature").value == 22.5
+
+
+def test_thermostat_mode_valid_values_only_off_and_heat(driver):
+    acc = ThermostatAccessory(driver, "Thermo")
+    char = acc.get_service("Thermostat").get_characteristic("TargetHeatingCoolingState")
+    assert set(char.properties["ValidValues"].values()) == {0, 1}
+
+
+def test_thermostat_target_temperature_range_is_homekit_compliant(driver):
+    # Apple's spec minimum for TargetTemperature is 10 °C; frost setpoints
+    # below that are represented as mode "off" instead.
+    acc = ThermostatAccessory(driver, "Thermo")
+    char = acc.get_service("Thermostat").get_characteristic("TargetTemperature")
+    assert char.properties["minValue"] == 10.0
+
+
+def test_thermostat_setpoint_for_mode(driver):
+    acc = ThermostatAccessory(driver, "Thermo")
+    acc.update_state(target_temp=22.0)
+    assert acc.setpoint_for_mode(0) == 4.5
+    assert acc.setpoint_for_mode(1) == 22.0
 
 
 def test_writable_characteristics_per_type(driver):
@@ -241,7 +276,8 @@ def test_writable_characteristics_per_type(driver):
     assert set(OutletAccessory(driver, "o").writable_characteristics()) == {"on"}
     assert set(LightbulbAccessory(driver, "l").writable_characteristics()) == {"on", "brightness"}
     assert set(CoverAccessory(driver, "c").writable_characteristics()) == {"position"}
-    assert set(ThermostatAccessory(driver, "t").writable_characteristics()) == {"target_temp"}
+    assert set(ThermostatAccessory(driver, "t").writable_characteristics()) == {
+        "target_temp", "mode"}
 
 
 def test_cover_update_state_position_sets_both(driver):

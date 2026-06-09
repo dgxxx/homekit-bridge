@@ -85,9 +85,11 @@ class HomeKitBridge:
     # Build helpers
     # ------------------------------------------------------------------
 
-    def _make_setter(self, addr: str, key: str, scale: float):
+    def _make_setter(self, addr: str, key: str, scale: float, convert=None):
         def setter(value):
             try:
+                if convert is not None:
+                    value = convert(value)
                 self._ccu3.set_value(addr, key, value / scale if scale != 1.0 else value)
             except Exception:
                 logger.exception("set_value failed for %s", addr)
@@ -102,7 +104,8 @@ class HomeKitBridge:
             char = chars.get(semantic)
             if char is None:
                 continue
-            char.setter_callback = self._make_setter(address, dp.kwarg, dp.scale)
+            convert = getattr(acc, dp.via) if dp.via else None
+            char.setter_callback = self._make_setter(address, dp.kwarg, dp.scale, convert)
 
     def _make_ccu3_accessory(self, mapping: dict) -> Optional[Accessory]:
         address = mapping["address"]

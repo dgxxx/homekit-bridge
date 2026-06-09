@@ -133,9 +133,17 @@ class CoverAccessory(Accessory):
 
 
 class ThermostatAccessory(Accessory):
-    """Thermostat (current + target temperature)."""
+    """Thermostat (current + target temperature, heat/off mode).
+
+    HmIP signals "off" via the frost-protection setpoint (4.5 °C).  HomeKit's
+    TargetTemperature minimum is 10 °C, so setpoints below ``_OFF_THRESHOLD``
+    map to mode "off" while the last heating setpoint stays displayed.
+    """
 
     category = 9  # HAP category: Thermostat
+
+    OFF_SETPOINT = 4.5    # HmIP frost protection == "off"
+    _OFF_THRESHOLD = 10.0  # below HomeKit's displayable minimum → "off"
 
     def __init__(
         self,
@@ -150,11 +158,12 @@ class ThermostatAccessory(Accessory):
         self._char_hc_current = svc.get_characteristic("CurrentHeatingCoolingState")
         self._char_hc_target = svc.get_characteristic("TargetHeatingCoolingState")
         self._char_units = svc.get_characteristic("TemperatureDisplayUnits")
-        # HmIP setpoint range (default HAP min 10 would reject frost-protection 4.5 °C)
+        # HmIP heating setpoint range, clamped to Apple's spec minimum of 10 °C
         self._char_target.override_properties(
-            properties={"minValue": 4.5, "maxValue": 30.5, "minStep": 0.5}
+            properties={"minValue": 10.0, "maxValue": 30.5, "minStep": 0.5}
         )
-        # Present as a heating thermostat (real mode mapping is out of scope)
+        # Heating-only device: no cool/auto modes
+        self._char_hc_target.override_properties(valid_values={"Off": 0, "Heat": 1})
         self._char_hc_current.set_value(1)
         self._char_hc_target.set_value(1)
 
@@ -167,12 +176,29 @@ class ThermostatAccessory(Accessory):
         if current_temp is not None:
             self._char_current.set_value(current_temp)
         if target_temp is not None:
-            self._char_target.set_value(target_temp)
+            if target_temp < self._OFF_THRESHOLD:
+                # Frost/eco setpoint == off; keep the last heating setpoint
+                self._char_hc_current.set_value(0)
+                self._char_hc_target.set_value(0)
+            else:
+                self._char_target.set_value(target_temp)
+                self._char_hc_current.set_value(1)
+                self._char_hc_target.set_value(1)
         if humidity is not None:
             self._char_humidity.set_value(humidity)
 
+    def setpoint_for_mode(self, mode: int) -> float:
+        """HM setpoint realizing a HomeKit mode write (0=off, 1=heat).
+
+        "Heat" restores the last heating setpoint still held by the
+        TargetTemperature characteristic (never overwritten by "off").
+        """
+        if mode == 0:
+            return self.OFF_SETPOINT
+        return float(self._char_target.value)
+
     def writable_characteristics(self) -> dict:
-        return {"target_temp": self._char_target}
+        return {"target_temp": self._char_target, "mode": self._char_hc_target}
 
 
 class ContactSensorAccessory(Accessory):

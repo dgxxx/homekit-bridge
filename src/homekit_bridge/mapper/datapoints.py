@@ -15,13 +15,18 @@ class DP:
     """One datapoint mapping.
 
     ``kwarg`` is the ``update_state`` argument name (read direction) or the
-    semantic characteristic name (write direction).  ``scale`` converts between
+    HM datapoint name (write direction).  ``scale`` converts between
     Homematic units and HomeKit units: read does ``value * scale``, write does
     ``value / scale`` (e.g. blind LEVEL 0..1 ↔ HomeKit position 0..100).
+
+    ``via`` (write direction only) names an accessory method that converts the
+    HomeKit value into the HM value when a plain scale factor is not enough
+    (e.g. thermostat mode → setpoint).
     """
 
     kwarg: str
     scale: float = 1.0
+    via: str | None = None
 
 
 READ_DATAPOINTS: dict[HKType, dict[str, DP]] = {
@@ -41,7 +46,10 @@ READ_DATAPOINTS: dict[HKType, dict[str, DP]] = {
 }
 
 WRITE_DATAPOINTS: dict[HKType, dict[str, DP]] = {
-    HKType.THERMOSTAT: {"target_temp": DP("SET_POINT_TEMPERATURE")},
+    HKType.THERMOSTAT: {
+        "target_temp": DP("SET_POINT_TEMPERATURE"),
+        "mode": DP("SET_POINT_TEMPERATURE", via="setpoint_for_mode"),
+    },
     HKType.SWITCH:     {"on": DP("STATE")},
     HKType.OUTLET:     {"on": DP("STATE")},
     HKType.COVER:      {"position": DP("LEVEL", scale=100.0)},
