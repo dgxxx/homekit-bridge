@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from homekit_bridge.config import ConfigStore
 from homekit_bridge.events import EventBus
+from homekit_bridge.logbuffer import RingBufferLogHandler
 from homekit_bridge.models import Channel, Device, HKType, PVData
 from homekit_bridge.settings import Settings
 from homekit_bridge.web.api import create_app
@@ -84,7 +85,12 @@ def bus():
 
 
 @pytest.fixture
-def app(store, ccu3, solar, bridge_state, bus):
+def logbuf():
+    return RingBufferLogHandler()
+
+
+@pytest.fixture
+def app(store, ccu3, solar, bridge_state, bus, logbuf):
     return create_app(
         config_store=store,
         ccu3_adapter=ccu3,
@@ -92,11 +98,12 @@ def app(store, ccu3, solar, bridge_state, bus):
         bridge_state=bridge_state,
         settings=_make_settings(),
         bus=bus,
+        log_buffer=logbuf,
     )
 
 
 @pytest.fixture
-def auth_app(store, ccu3, solar, bridge_state, bus):
+def auth_app(store, ccu3, solar, bridge_state, bus, logbuf):
     return create_app(
         config_store=store,
         ccu3_adapter=ccu3,
@@ -104,6 +111,7 @@ def auth_app(store, ccu3, solar, bridge_state, bus):
         bridge_state=bridge_state,
         settings=_make_settings(web_password="secret"),
         bus=bus,
+        log_buffer=logbuf,
     )
 
 
@@ -266,6 +274,7 @@ def _make_app_with_ccu3(store, solar, bridge_state, devices):
         bridge_state=bridge_state,
         settings=_make_settings(),
         bus=EventBus(),
+        log_buffer=RingBufferLogHandler(),
     )
 
 
@@ -344,6 +353,7 @@ async def test_get_devices_ccu3_failure_returns_config_only(store, solar, bridge
         bridge_state=bridge_state,
         settings=_make_settings(),
         bus=EventBus(),
+        log_buffer=RingBufferLogHandler(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -404,6 +414,7 @@ async def test_get_solar_none_snapshot_returns_unavailable(store, ccu3, bridge_s
         bridge_state=bridge_state,
         settings=_make_settings(),
         bus=EventBus(),
+        log_buffer=RingBufferLogHandler(),
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         r = await c.get("/api/solar")

@@ -24,6 +24,7 @@ from pyhap.accessory_driver import AccessoryDriver
 from homekit_bridge.config import ConfigStore
 from homekit_bridge.events import EventBus
 from homekit_bridge.hap.bridge import HomeKitBridge
+from homekit_bridge.logbuffer import RingBufferLogHandler
 from homekit_bridge.models import PVData
 from homekit_bridge.mqttsource import MqttSource
 from homekit_bridge.settings import Settings
@@ -94,6 +95,24 @@ class _BridgeState:
         except Exception:
             return False
 
+    def pairing_pin(self) -> Optional[str]:
+        """The HomeKit setup PIN as a string, or None if not available yet."""
+        if self.hap_driver is None:
+            return None
+        try:
+            return self.hap_driver.state.pincode.decode()
+        except Exception:
+            return None
+
+    def pairing_uri(self) -> Optional[str]:
+        """The X-HM:// pairing URI for the QR code, or None if not available."""
+        if self.hap_driver is None:
+            return None
+        try:
+            return self.hap_driver.accessory.xhm_uri()
+        except Exception:
+            return None
+
 
 # ---------------------------------------------------------------------------
 # Return type
@@ -110,12 +129,28 @@ class AppComponents:
     ccu3_adapter: Any
     solar_state: _SolarState
     bridge_state: _BridgeState
+    log_buffer: RingBufferLogHandler = field(default_factory=RingBufferLogHandler)
     stop_event: threading.Event = field(default_factory=threading.Event)
 
 
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+
+def _install_log_buffer() -> RingBufferLogHandler:
+    """Attach a fresh ring buffer to the root logger (replacing any prior one).
+
+    Replacing avoids stacking duplicate handlers when build() runs repeatedly
+    (e.g. across tests in one process).
+    """
+    root = logging.getLogger()
+    for existing in list(root.handlers):
+        if isinstance(existing, RingBufferLogHandler):
+            root.removeHandler(existing)
+    handler = RingBufferLogHandler()
+    root.addHandler(handler)
+    return handler
+
 
 def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
     """Assemble all subsystems.  Inject *fakes* to avoid real I/O in tests."""
@@ -132,6 +167,7 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
 
     # Shared state objects
     bus = EventBus()
+    log_buffer = _install_log_buffer()
     config_store = ConfigStore(db_path)
     solar_state = _SolarState()
     bridge_state = _BridgeState()
@@ -180,6 +216,7 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
         bridge_state=bridge_state,
         settings=settings,
         bus=bus,
+        log_buffer=log_buffer,
     )
 
     return AppComponents(
@@ -192,6 +229,7 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
         ccu3_adapter=ccu3_adapter,
         solar_state=solar_state,
         bridge_state=bridge_state,
+        log_buffer=log_buffer,
         stop_event=stop_event,
     )
 
@@ -269,24 +307,19 @@ def main() -> None:
 
 
 def _log_pairing_info(driver: AccessoryDriver) -> None:
-    """Print the HAP pairing PIN (and QR code if available) to the log."""
+    """Print the HAP pairing PIN (and an ASCII QR if qrcode is available)."""
     try:
         pin = driver.state.pincode.decode()
         logger.info("HomeKit pairing PIN: %s", pin)
         try:
             import qrcode  # type: ignore[import-untyped]
             qr = qrcode.QRCode()
-            qr.add_data(f"X-HM://00{_encode_setup_id(pin)}HOMEKIT-BRIDGE")
+            qr.add_data(driver.accessory.xhm_uri())
             qr.print_ascii(invert=True)
-        except ImportError:
-            pass  # qrcode package optional
+        except Exception:
+            pass  # qrcode optional / accessory not ready
     except Exception:
         logger.debug("Could not read HAP pairing PIN", exc_info=True)
-
-
-def _encode_setup_id(pin: str) -> str:
-    """Minimal numeric encoding for the HAP QR URI (digits only, no dashes)."""
-    return pin.replace("-", "")
 
 
 if __name__ == "__main__":

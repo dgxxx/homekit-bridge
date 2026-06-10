@@ -1,8 +1,8 @@
 """FastAPI application factory for homekit-bridge.
 
-``create_app(config_store, ccu3_adapter, solar_state, bridge_state, settings, bus)``
-builds and returns the ASGI app.  All dependencies are injected so the app
-can be tested without real adapters.
+``create_app(config_store, ccu3_adapter, solar_state, bridge_state, settings, bus,
+log_buffer)`` builds and returns the ASGI app.  All dependencies are injected so
+the app can be tested without real adapters.
 
 Routes
 ------
@@ -111,6 +111,7 @@ def create_app(
     bridge_state: Any,
     settings: Settings,
     bus: EventBus,
+    log_buffer: Any,
 ) -> FastAPI:
     """Return the configured FastAPI application."""
 

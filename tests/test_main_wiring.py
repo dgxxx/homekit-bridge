@@ -4,6 +4,8 @@
 any real network ports.  No HAP mDNS, no Uvicorn, no real MQTT.
 """
 
+import logging
+
 from homekit_bridge.__main__ import build, AppComponents
 from homekit_bridge.mqttsource import MqttSource
 
@@ -162,3 +164,26 @@ def test_create_app_receives_bus(tmp_path, monkeypatch):
 
     assert "bus" in captured
     assert captured["bus"] is not None
+
+
+def test_build_exposes_log_buffer(tmp_path, monkeypatch):
+    """build() installs a RingBufferLogHandler and exposes it on AppComponents."""
+    monkeypatch.setenv("STATE_DIR", str(tmp_path))
+
+    components = build(fakes={"mqtt_client": FakeMqttClient()})
+
+    from homekit_bridge.logbuffer import RingBufferLogHandler
+    assert isinstance(components.log_buffer, RingBufferLogHandler)
+    # The handler is attached to the root logger so it captures all output.
+    assert components.log_buffer in logging.getLogger().handlers
+
+
+def test_bridge_state_pairing_accessors(tmp_path, monkeypatch):
+    """_BridgeState exposes the real PIN and xhm:// pairing URI from the driver."""
+    monkeypatch.setenv("STATE_DIR", str(tmp_path))
+
+    components = build(fakes={"mqtt_client": FakeMqttClient()})
+
+    bs = components.bridge_state
+    assert isinstance(bs.pairing_pin(), str)
+    assert bs.pairing_uri().startswith("X-HM://")
