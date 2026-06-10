@@ -12,6 +12,8 @@ POST /api/devices/{address}     — upsert channel mapping (export / hk_type / n
 GET  /api/solar                 — latest PVData snapshot
 GET  /api/status                — bridge + connectivity summary
 GET  /api/logs                  — recent log records (RAM ring buffer), ``?level=`` filter
+GET  /api/pairing               — HomeKit setup PIN + X-HM:// URI (503 until HAP ready)
+GET  /api/pairing/qr.svg        — pairing QR as SVG (503 until HAP ready)
 GET  /                          — serves the static frontend (StaticFiles)
 
 Auth
@@ -21,11 +23,13 @@ auth with any username and the configured password.  /health is always open.
 """
 
 import base64
+import io
 import logging
 import pathlib
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+import qrcode.image.svg
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -196,6 +200,41 @@ def create_app(
     @app.get("/api/logs", dependencies=api_deps)
     async def get_logs(level: Optional[str] = None) -> dict:
         return {"records": log_buffer.records(level=level)}
+
+    # ------------------------------------------------------------------
+    # /api/pairing — HomeKit setup PIN + QR
+    # ------------------------------------------------------------------
+
+    @app.get("/api/pairing", dependencies=api_deps)
+    async def get_pairing() -> dict:
+        pin = bridge_state.pairing_pin()
+        uri = bridge_state.pairing_uri()
+        if pin is None or uri is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Pairing information not available yet",
+            )
+        return {"pin": pin, "uri": uri, "paired": bridge_state.paired}
+
+    @app.get("/api/pairing/qr.svg", dependencies=api_deps)
+    async def get_pairing_qr() -> Response:
+        uri = bridge_state.pairing_uri()
+        if uri is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Pairing information not available yet",
+            )
+        try:
+            img = qrcode.make(uri, image_factory=qrcode.image.svg.SvgPathImage)
+            buf = io.BytesIO()
+            img.save(buf)
+        except Exception:
+            logger.exception("Failed to render pairing QR code")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="QR rendering failed",
+            )
+        return Response(content=buf.getvalue(), media_type="image/svg+xml")
 
     # ------------------------------------------------------------------
     # Static frontend — mount last so API routes take priority

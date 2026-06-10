@@ -1,5 +1,6 @@
 """Tests for the pairing and logs API routes."""
 
+import base64
 import logging
 
 import pytest
@@ -103,3 +104,63 @@ async def test_logs_requires_auth(tmp_path):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         r = await c.get("/api/logs")
     assert r.status_code == 401
+
+
+# ---- /api/pairing ----
+
+@pytest.mark.asyncio
+async def test_pairing_returns_pin_and_uri(tmp_path):
+    app = _make_app(tmp_path, FakeBridgeState())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/pairing")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["pin"] == "123-45-678"
+    assert data["uri"] == "X-HM://0012ABCDEFGHK"
+    assert data["paired"] is False
+
+
+@pytest.mark.asyncio
+async def test_pairing_503_when_unavailable(tmp_path):
+    app = _make_app(tmp_path, UnavailableBridgeState())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/pairing")
+    assert r.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_pairing_qr_svg(tmp_path):
+    app = _make_app(tmp_path, FakeBridgeState())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/pairing/qr.svg")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/svg+xml")
+    assert b"<svg" in r.content
+
+
+@pytest.mark.asyncio
+async def test_pairing_qr_503_when_unavailable(tmp_path):
+    app = _make_app(tmp_path, UnavailableBridgeState())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/pairing/qr.svg")
+    assert r.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_pairing_requires_auth(tmp_path):
+    app = _make_app(tmp_path, FakeBridgeState(), web_password="secret")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r1 = await c.get("/api/pairing")
+        r2 = await c.get("/api/pairing/qr.svg")
+    assert r1.status_code == 401
+    assert r2.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_pairing_qr_svg_with_auth(tmp_path):
+    app = _make_app(tmp_path, FakeBridgeState(), web_password="secret")
+    creds = base64.b64encode(b"admin:secret").decode()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/pairing/qr.svg", headers={"Authorization": f"Basic {creds}"})
+    assert r.status_code == 200
+    assert b"<svg" in r.content
