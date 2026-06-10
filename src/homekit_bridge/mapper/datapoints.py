@@ -34,6 +34,7 @@ READ_DATAPOINTS: dict[HKType, dict[str, DP]] = {
         "ACTUAL_TEMPERATURE": DP("current_temp"),
         "SET_POINT_TEMPERATURE": DP("target_temp"),
         "HUMIDITY": DP("humidity"),
+        "SET_POINT_MODE": DP("set_point_mode"),
     },
     HKType.SWITCH:      {"STATE": DP("on")},
     HKType.OUTLET:      {"STATE": DP("on")},

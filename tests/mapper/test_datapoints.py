@@ -8,6 +8,11 @@ def test_thermostat_read_datapoints():
     assert read_update(HKType.THERMOSTAT, "HUMIDITY", 40) == {"humidity": 40}
 
 
+def test_thermostat_reads_set_point_mode():
+    assert read_update(HKType.THERMOSTAT, "SET_POINT_MODE", 0) == {"set_point_mode": 0}
+    assert read_update(HKType.THERMOSTAT, "SET_POINT_MODE", 1) == {"set_point_mode": 1}
+
+
 def test_thermostat_ignores_unknown_datapoints():
     assert read_update(HKType.THERMOSTAT, "BOOST_MODE", False) is None
     assert read_update(HKType.THERMOSTAT, "PARTY_MODE", False) is None
