@@ -50,4 +50,7 @@ class RingBufferLogHandler(logging.Handler):
                 items = [r for r in items if r["levelno"] >= threshold]
         if limit is not None:
             items = items[-limit:] if limit > 0 else []
-        return items
+        return [
+            {"ts": r["ts"], "level": r["level"], "logger": r["logger"], "message": r["message"]}
+            for r in items
+        ]

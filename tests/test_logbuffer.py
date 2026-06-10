@@ -20,6 +20,7 @@ def test_records_capture_shape():
     assert r["logger"] == "ccu3"
     assert r["message"] == "hello"
     assert isinstance(r["ts"], float)
+    assert set(r) == {"ts", "level", "logger", "message"}
 
 
 def test_maxlen_eviction():

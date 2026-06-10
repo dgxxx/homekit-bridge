@@ -11,6 +11,7 @@ GET  /api/devices               — merged list: CCU3 discovery + config-store o
 POST /api/devices/{address}     — upsert channel mapping (export / hk_type / name)
 GET  /api/solar                 — latest PVData snapshot
 GET  /api/status                — bridge + connectivity summary
+GET  /api/logs                  — recent log records (RAM ring buffer), ``?level=`` filter
 GET  /                          — serves the static frontend (StaticFiles)
 
 Auth
@@ -187,6 +188,14 @@ def create_app(
             "ccu3_connected": bridge_state.ccu3_connected,
             "solaredge_connected": bridge_state.solaredge_connected,
         }
+
+    # ------------------------------------------------------------------
+    # /api/logs
+    # ------------------------------------------------------------------
+
+    @app.get("/api/logs", dependencies=api_deps)
+    async def get_logs(level: Optional[str] = None) -> dict:
+        return {"records": log_buffer.records(level=level)}
 
     # ------------------------------------------------------------------
     # Static frontend — mount last so API routes take priority
