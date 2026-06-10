@@ -286,7 +286,7 @@ def test_thermostat_mode_off_publishes_frost_setpoint(driver, store, bus, ccu3):
         "TargetHeatingCoolingState")
     char.client_update_value(0)
     assert ("TH:1", "SET_POINT_TEMPERATURE", 4.5) in ccu3.set_calls
-    assert ("TH:1", "SET_POINT_MODE", 1) in ccu3.set_calls
+    assert ("TH:1", "CONTROL_MODE", 1) in ccu3.set_calls
 
 
 def test_thermostat_mode_heat_restores_last_setpoint(driver, store, bus, ccu3):
@@ -429,14 +429,15 @@ def test_thermostat_auto_mode_event_sets_homekit_auto(driver, store, bus, ccu3):
     assert svc.get_characteristic("TargetHeatingCoolingState").value == 3
 
 
-def test_thermostat_mode_auto_publishes_set_point_mode(driver, store, bus, ccu3):
+def test_thermostat_mode_auto_publishes_control_mode(driver, store, bus, ccu3):
     store.set_mapping("TH:1", exported=True, hk_type=HKType.THERMOSTAT, name="Thermo")
     bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
     bridge.build()
     char = bridge.accessories[0].get_service("Thermostat").get_characteristic(
         "TargetHeatingCoolingState")
     char.client_update_value(3)  # Auto
-    assert ("TH:1", "SET_POINT_MODE", 0) in ccu3.set_calls
+    # Mode is set via CONTROL_MODE (the CCU rejects setValue on SET_POINT_MODE).
+    assert ("TH:1", "CONTROL_MODE", 0) in ccu3.set_calls
 
 
 def test_thermostat_mode_heat_publishes_manu_and_setpoint(driver, store, bus, ccu3):
@@ -449,5 +450,5 @@ def test_thermostat_mode_heat_publishes_manu_and_setpoint(driver, store, bus, cc
     char = bridge.accessories[0].get_service("Thermostat").get_characteristic(
         "TargetHeatingCoolingState")
     char.client_update_value(1)  # Heat
-    assert ("TH:1", "SET_POINT_MODE", 1) in ccu3.set_calls
+    assert ("TH:1", "CONTROL_MODE", 1) in ccu3.set_calls
     assert ("TH:1", "SET_POINT_TEMPERATURE", 21.5) in ccu3.set_calls

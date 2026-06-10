@@ -214,20 +214,24 @@ class ThermostatAccessory(Accessory):
     def writes_for_mode(self, mode: int) -> dict[str, int | float]:
         """HM datapoints realizing a HomeKit mode write.
 
-        Off (0)  → frost setpoint (forces MANU on the device).
-        Auto (3) → SET_POINT_MODE 0 (follow the HmIP weekly profile).
-        Heat (1) → SET_POINT_MODE 1 (MANU) + restore the last heating setpoint
-                   still held by TargetTemperature (never overwritten by "off").
-                   On a fresh accessory (no setpoint received yet) this is
+        The HmIP control mode is set via ``CONTROL_MODE`` (0 = AUTO/weekly profile,
+        1 = MANU).  ``SET_POINT_MODE`` is read-only in practice — the CCU rejects
+        ``setValue`` on it — so it is consumed only on the read path, never written.
+
+        Off (0)  → CONTROL_MODE 1 (MANU) + frost setpoint (4.5 °C turns heating off).
+        Auto (3) → CONTROL_MODE 0 (follow the HmIP weekly profile).
+        Heat (1) → CONTROL_MODE 1 (MANU) + restore the last heating setpoint still
+                   held by TargetTemperature (never overwritten by "off").  On a
+                   fresh accessory (no setpoint received yet) this is
                    TargetTemperature's initial value (the HAP minimum).
         """
         if mode == 0:
             # Force MANU so "off" sticks even if the device was in AUTO; the frost
             # setpoint (4.5 °C) is what actually turns the heating off.
-            return {"SET_POINT_MODE": 1, "SET_POINT_TEMPERATURE": self.OFF_SETPOINT}
+            return {"CONTROL_MODE": 1, "SET_POINT_TEMPERATURE": self.OFF_SETPOINT}
         if mode == 3:
-            return {"SET_POINT_MODE": 0}
-        return {"SET_POINT_MODE": 1, "SET_POINT_TEMPERATURE": float(self._char_target.value)}
+            return {"CONTROL_MODE": 0}
+        return {"CONTROL_MODE": 1, "SET_POINT_TEMPERATURE": float(self._char_target.value)}
 
     def writable_characteristics(self) -> dict:
         return {"target_temp": self._char_target, "mode": self._char_hc_target}

@@ -4,6 +4,17 @@
 **Status:** Genehmigt (Brainstorming abgeschlossen)
 **Branch:** feat/thermostat-modes
 
+> **Korrektur (2026-06-10, nach Live-Test):** Die Annahme „Modus wird über
+> `SET_POINT_MODE` geschrieben" war falsch. Die CCU **lehnt `setValue` auf
+> `SET_POINT_MODE` ab** (faultet auf allen Interfaces) — der setzbare Parameter ist
+> **`CONTROL_MODE`** (0 = AUTO, 1 = MANU), empirisch bestätigt am Gerät. Daher gilt:
+> **lesen `SET_POINT_MODE`, schreiben `CONTROL_MODE`.** Die Write-Dicts unten sind
+> entsprechend zu lesen als `CONTROL_MODE` statt `SET_POINT_MODE`
+> (Auto → `{"CONTROL_MODE": 0}`, Heat → `{"CONTROL_MODE": 1, "SET_POINT_TEMPERATURE": …}`,
+> Off → `{"CONTROL_MODE": 1, "SET_POINT_TEMPERATURE": 4.5}`). Risiko 1 ist damit
+> aufgelöst (kein `ccu3`-Dienst-Eingriff nötig). Hinweis: `SET_POINT_MODE` spiegelt den
+> Moduswechsel erst nach einem `ccu3`-Poll-Zyklus (~60 s) wider, nicht sofort.
+
 ## Ziel
 
 Das HomeKit-Thermostat-Accessory soll **drei Modi** abbilden — **Aus / Heizung / Automatisch**
