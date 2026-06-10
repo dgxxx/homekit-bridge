@@ -9,7 +9,7 @@ populates it from the config store, and wires bidirectional state flow:
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from pyhap.accessory import Accessory, Bridge as HAPBridge
 from pyhap.accessory_driver import AccessoryDriver
@@ -85,11 +85,24 @@ class HomeKitBridge:
     # Build helpers
     # ------------------------------------------------------------------
 
-    def _make_setter(self, addr: str, key: str, scale: float, convert=None):
+    def _make_setter(
+        self,
+        addr: str,
+        key: str,
+        scale: float,
+        convert: Optional[Callable[[Any], "float | dict"]] = None,
+    ):
         def setter(value):
             try:
                 if convert is not None:
-                    value = convert(value)
+                    converted = convert(value)
+                    if isinstance(converted, dict):
+                        # Converter chose the datapoint(s) itself (e.g. thermostat mode):
+                        # publish each as its own homematic/<addr>/set command.
+                        for dp_key, dp_val in converted.items():
+                            self._ccu3.set_value(addr, dp_key, dp_val)
+                        return
+                    value = converted
                 self._ccu3.set_value(addr, key, value / scale if scale != 1.0 else value)
             except Exception:
                 logger.exception("set_value failed for %s", addr)

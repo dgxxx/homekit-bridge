@@ -392,3 +392,28 @@ def test_reconcile_added_accessory_keeps_aid_after_restart(
         assert _aids_by_name(bridge2)["New"] == runtime_aid
     finally:
         driver2.stop()
+
+
+def test_make_setter_dict_converter_publishes_each_datapoint(driver, store, bus, ccu3):
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    setter = bridge._make_setter("ADDR", "IGNORED", 1.0, convert=lambda v: {"A": 1, "B": 2})
+    setter(99)
+    assert ("ADDR", "A", 1) in ccu3.set_calls
+    assert ("ADDR", "B", 2) in ccu3.set_calls
+    # The declared dp.kwarg ("IGNORED") and the raw value are NOT published for a dict converter
+    assert ("ADDR", "IGNORED", 99) not in ccu3.set_calls
+    assert len(ccu3.set_calls) == 2
+
+
+def test_make_setter_scalar_converter_still_scales(driver, store, bus, ccu3):
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    setter = bridge._make_setter("ADDR", "LEVEL", 100.0, convert=None)
+    setter(50)  # scale 100 → 0.5
+    assert ("ADDR", "LEVEL", 0.5) in ccu3.set_calls
+
+
+def test_make_setter_scalar_converter_result_is_scaled(driver, store, bus, ccu3):
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    setter = bridge._make_setter("ADDR", "K", 2.0, convert=lambda v: v + 1)
+    setter(4)  # convert → 5, then / scale 2.0 → 2.5
+    assert ("ADDR", "K", 2.5) in ccu3.set_calls
