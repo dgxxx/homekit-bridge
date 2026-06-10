@@ -86,6 +86,19 @@ def test_build_devices_handles_channel_without_colon():
     assert devs[0].channels[0].address == "ABC"
 
 
+def test_discovery_parses_room_per_channel():
+    src, _ = _src()
+    src.handle("homematic/$discovery", json.dumps([
+        {"address": "ABC:1", "name": "Schalter", "device_type": "SWITCH",
+         "room": "Wohnzimmer"},
+        {"address": "XYZ:1", "name": "Rollo", "device_type": "BLIND"},
+    ]))
+    devs = {d.address: d for d in src.list_devices()}
+    assert devs["ABC"].channels[0].room == "Wohnzimmer"
+    # Missing room field defaults to empty string
+    assert devs["XYZ"].channels[0].room == ""
+
+
 def test_connected_reflects_on_connect():
     src, _ = _src()
     assert src.connected is False

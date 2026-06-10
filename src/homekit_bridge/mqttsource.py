@@ -37,6 +37,7 @@ def _build_devices(entries: list[dict]) -> list[Device]:
                 address=address,
                 hm_type=entry.get("device_type", ""),
                 name=entry.get("name", ""),
+                room=entry.get("room", ""),
             )
         )
     return list(devices.values())

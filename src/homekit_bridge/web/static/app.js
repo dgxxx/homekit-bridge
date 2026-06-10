@@ -45,7 +45,7 @@ const state = {
   /** @type {null|{paired:boolean, accessory_count:number, ccu3_connected:boolean, solaredge_connected:boolean}} */
   status: null,
 
-  /** @type {Array<{address:string, type:string, exported:boolean, hk_type:string|null, suggested_hk_type:string|null, name:string}>} */
+  /** @type {Array<{address:string, type:string, room:string, exported:boolean, hk_type:string|null, suggested_hk_type:string|null, name:string}>} */
   devices: [],
 
   /** pending row edits keyed by address */
@@ -393,7 +393,8 @@ function filterDevices(query) {
   const filtered = state.devices.filter(d =>
     d.name.toLowerCase().includes(q) ||
     d.address.toLowerCase().includes(q) ||
-    d.type.toLowerCase().includes(q)
+    d.type.toLowerCase().includes(q) ||
+    (d.room || "").toLowerCase().includes(q)
   );
   renderDeviceTable(filtered);
 }
@@ -417,10 +418,43 @@ function renderDeviceTable(devices) {
     return;
   }
 
-  tbody.innerHTML = devices.map(device => buildDeviceRow(device)).join("");
+  // Group devices by their CCU3 room (read-only). Devices without a room
+  // assignment are collected under a trailing "Ohne Raum" group.
+  const groups = groupByRoom(devices);
+
+  tbody.innerHTML = groups.map(([room, items]) => {
+    const header = `
+      <tr class="room-group">
+        <th colspan="6" scope="rowgroup">${escHtml(room)} <span
+          class="room-group__count">(${items.length})</span></th>
+      </tr>`;
+    return header + items.map(device => buildDeviceRow(device)).join("");
+  }).join("");
 
   // Attach per-row event listeners
   devices.forEach(device => bindRowEvents(device.address));
+}
+
+const UNASSIGNED_ROOM = "Ohne Raum";
+
+/**
+ * Group devices by room, sorted alphabetically (de locale). The synthetic
+ * "Ohne Raum" bucket for unassigned channels is always sorted last.
+ * @param {Array} devices
+ * @returns {Array<[string, Array]>}  [roomName, devices][] in display order
+ */
+function groupByRoom(devices) {
+  const byRoom = new Map();
+  for (const device of devices) {
+    const room = (device.room && device.room.trim()) || UNASSIGNED_ROOM;
+    if (!byRoom.has(room)) byRoom.set(room, []);
+    byRoom.get(room).push(device);
+  }
+  return [...byRoom.entries()].sort(([a], [b]) => {
+    if (a === UNASSIGNED_ROOM) return 1;
+    if (b === UNASSIGNED_ROOM) return -1;
+    return a.localeCompare(b, "de");
+  });
 }
 
 /**

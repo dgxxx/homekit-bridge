@@ -420,6 +420,29 @@ input, select {
   background: var(--color-surface-raised);
 }
 
+/* Room group header (read-only CCU3 room) */
+.device-table tr.room-group th {
+  background: var(--color-surface-raised);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text);
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+}
+
+.device-table tr.room-group:hover th {
+  background: var(--color-surface-raised);
+}
+
+.room-group__count {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
 /* Export toggle */
 .toggle {
   appearance: none;

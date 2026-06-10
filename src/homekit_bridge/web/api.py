@@ -57,6 +57,7 @@ class DeviceMappingIn(BaseModel):
 class DeviceMappingOut(BaseModel):
     address: str
     type: str = ""                   # raw Homematic channel type (e.g. "SWITCH")
+    room: str = ""                   # CCU3 room assignment (read-only, from discovery)
     exported: bool
     hk_type: Optional[str] = None    # config override
     suggested_hk_type: Optional[str] = None  # auto-detected from HM type
@@ -269,12 +270,12 @@ def _merged_device_list(store: ConfigStore, ccu3_adapter: Any) -> list[dict]:
     """
     config: dict[str, dict] = _all_config_mappings(store)
 
-    # Build address → (hm_type, ccu3_name) from CCU3 discovery
-    discovered: dict[str, tuple[str, str]] = {}
+    # Build address → (hm_type, ccu3_name, room) from CCU3 discovery
+    discovered: dict[str, tuple[str, str, str]] = {}
     try:
         for device in ccu3_adapter.list_devices():
             for ch in device.channels:
-                discovered[ch.address] = (ch.hm_type, ch.name)
+                discovered[ch.address] = (ch.hm_type, ch.name, ch.room)
     except Exception:
         logger.warning("CCU3 list_devices() failed — falling back to config-only device list")
 
@@ -283,7 +284,7 @@ def _merged_device_list(store: ConfigStore, ccu3_adapter: Any) -> list[dict]:
 
     result = []
     for address in all_addresses:
-        hm_type, ccu3_name = discovered.get(address, ("", ""))
+        hm_type, ccu3_name, room = discovered.get(address, ("", "", ""))
         row = config.get(address)
 
         # Resolve fields with priority: config > discovery > defaults
@@ -296,6 +297,7 @@ def _merged_device_list(store: ConfigStore, ccu3_adapter: Any) -> list[dict]:
         result.append({
             "address": address,
             "type": hm_type,
+            "room": room,
             "exported": exported,
             "hk_type": hk_type_obj.value if hk_type_obj else None,
             "suggested_hk_type": suggested.value if suggested else None,

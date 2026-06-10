@@ -134,7 +134,7 @@ nicht mitgeprüft wurde.
 
 **v2 (MQTT-Refactor) abgeschlossen** — Stand 2026-06-07.
 
-- 168 Tests grün (`pytest -q`), `ruff check` sauber.
+- 171 Tests grün (`pytest -q`), `ruff check` sauber.
 - Bridge ist reiner MQTT-Konsument; `ccu3`- und `solaredge`-Adapter sind eliminiert.
 - Daten kommen von den Quell-Diensten `ccu3` und `solaredge` via MQTT.
 

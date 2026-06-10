@@ -20,6 +20,7 @@ class Channel:
     address: str              # CCU3 channel address, e.g. "OEQ0123456:1"
     hm_type: str              # raw HM channel type, e.g. "SWITCH", "BLIND"
     name: str
+    room: str = ""            # CCU3 room assignment (read-only, from $discovery)
     exported: bool = False
     hk_type: Optional[HKType] = None  # override; None => auto from hm_type
 

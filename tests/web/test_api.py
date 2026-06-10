@@ -301,6 +301,35 @@ async def test_get_devices_shows_discovered_ccu3_channels(store, solar, bridge_s
 
 
 @pytest.mark.asyncio
+async def test_get_devices_includes_room_from_discovery(store, solar, bridge_state):
+    """The CCU3 room assignment is passed through read-only in /api/devices."""
+    device = Device(
+        address="OEQ1",
+        model="HM-LC-Sw1",
+        channels=[Channel(address="OEQ1:1", hm_type="SWITCH", name="Channel 1",
+                          room="Wohnzimmer")],
+    )
+    app = _make_app_with_ccu3(store, solar, bridge_state, [device])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/devices")
+    data = r.json()
+    assert data[0]["room"] == "Wohnzimmer"
+
+
+@pytest.mark.asyncio
+async def test_get_devices_room_empty_when_config_only(store, solar, bridge_state):
+    """Config-only channels (not discovered) report an empty room."""
+    store.set_mapping("OLD:1", exported=True, hk_type=HKType.SWITCH, name="Old Device")
+    app = _make_app_with_ccu3(store, solar, bridge_state, [])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/devices")
+    row = next(d for d in r.json() if d["address"] == "OLD:1")
+    assert row["room"] == ""
+
+
+@pytest.mark.asyncio
 async def test_get_devices_config_overrides_discovery(store, solar, bridge_state):
     """Config-store overrides (name, hk_type, exported) take priority over CCU3 defaults."""
     store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.OUTLET, name="My Outlet")
