@@ -417,3 +417,36 @@ def test_make_setter_scalar_converter_result_is_scaled(driver, store, bus, ccu3)
     setter = bridge._make_setter("ADDR", "K", 2.0, convert=lambda v: v + 1)
     setter(4)  # convert → 5, then / scale 2.0 → 2.5
     assert ("ADDR", "K", 2.5) in ccu3.set_calls
+
+
+def test_thermostat_auto_mode_event_sets_homekit_auto(driver, store, bus, ccu3):
+    store.set_mapping("TH:1", exported=True, hk_type=HKType.THERMOSTAT, name="Thermo")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    svc = bridge.accessories[0].get_service("Thermostat")
+    bus.publish("ccu3.state", {"address": "TH:1", "key": "SET_POINT_MODE", "value": 0})
+    assert svc.get_characteristic("TargetHeatingCoolingState").value == 3
+
+
+def test_thermostat_mode_auto_publishes_set_point_mode(driver, store, bus, ccu3):
+    store.set_mapping("TH:1", exported=True, hk_type=HKType.THERMOSTAT, name="Thermo")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    char = bridge.accessories[0].get_service("Thermostat").get_characteristic(
+        "TargetHeatingCoolingState")
+    char.client_update_value(3)  # Auto
+    assert ("TH:1", "SET_POINT_MODE", 0) in ccu3.set_calls
+
+
+def test_thermostat_mode_heat_publishes_manu_and_setpoint(driver, store, bus, ccu3):
+    store.set_mapping("TH:1", exported=True, hk_type=HKType.THERMOSTAT, name="Thermo")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    # Heating at 21.5, then off (frost) — last heating setpoint 21.5 is retained.
+    bus.publish("ccu3.state", {"address": "TH:1", "key": "SET_POINT_TEMPERATURE", "value": 21.5})
+    bus.publish("ccu3.state", {"address": "TH:1", "key": "SET_POINT_TEMPERATURE", "value": 4.5})
+    char = bridge.accessories[0].get_service("Thermostat").get_characteristic(
+        "TargetHeatingCoolingState")
+    char.client_update_value(1)  # Heat
+    assert ("TH:1", "SET_POINT_MODE", 1) in ccu3.set_calls
+    assert ("TH:1", "SET_POINT_TEMPERATURE", 21.5) in ccu3.set_calls
