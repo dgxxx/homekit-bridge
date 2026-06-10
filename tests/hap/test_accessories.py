@@ -250,10 +250,10 @@ def test_thermostat_normal_setpoint_maps_to_heat(driver):
     assert svc.get_characteristic("TargetTemperature").value == 22.5
 
 
-def test_thermostat_mode_valid_values_only_off_and_heat(driver):
+def test_thermostat_mode_valid_values_off_heat_auto(driver):
     acc = ThermostatAccessory(driver, "Thermo")
     char = acc.get_service("Thermostat").get_characteristic("TargetHeatingCoolingState")
-    assert set(char.properties["ValidValues"].values()) == {0, 1}
+    assert set(char.properties["ValidValues"].values()) == {0, 1, 3}
 
 
 def test_thermostat_target_temperature_range_is_homekit_compliant(driver):
@@ -264,11 +264,44 @@ def test_thermostat_target_temperature_range_is_homekit_compliant(driver):
     assert char.properties["minValue"] == 10.0
 
 
-def test_thermostat_setpoint_for_mode(driver):
+def test_thermostat_writes_for_mode(driver):
     acc = ThermostatAccessory(driver, "Thermo")
-    acc.update_state(target_temp=22.0)
-    assert acc.setpoint_for_mode(0) == 4.5
-    assert acc.setpoint_for_mode(1) == 22.0
+    acc.update_state(target_temp=22.0)  # establishes the last heating setpoint
+    assert acc.writes_for_mode(0) == {"SET_POINT_TEMPERATURE": 4.5}        # Off
+    assert acc.writes_for_mode(3) == {"SET_POINT_MODE": 0}                 # Auto
+    assert acc.writes_for_mode(1) == {"SET_POINT_MODE": 1,
+                                      "SET_POINT_TEMPERATURE": 22.0}       # Heat
+
+
+def test_thermostat_heat_write_before_any_state_uses_target_default(driver):
+    acc = ThermostatAccessory(driver, "Thermo")
+    # No update_state yet → Heat write uses the characteristic's initial TargetTemperature.
+    assert acc.writes_for_mode(1) == {"SET_POINT_MODE": 1, "SET_POINT_TEMPERATURE": 10.0}
+
+
+def test_thermostat_auto_mode_maps_to_auto(driver):
+    acc = ThermostatAccessory(driver, "Thermo")
+    acc.update_state(set_point_mode=0)  # HmIP AUTO
+    svc = acc.get_service("Thermostat")
+    assert svc.get_characteristic("TargetHeatingCoolingState").value == 3
+    # Current has no "Auto" state in HomeKit → shown as Heat
+    assert svc.get_characteristic("CurrentHeatingCoolingState").value == 1
+
+
+def test_thermostat_mode_derivation_is_order_independent(driver):
+    acc = ThermostatAccessory(driver, "Thermo")
+    svc = acc.get_service("Thermostat")
+    # mode event arrives BEFORE the setpoint event
+    acc.update_state(set_point_mode=1)        # MANU
+    acc.update_state(target_temp=4.5)         # frost → Off
+    assert svc.get_characteristic("TargetHeatingCoolingState").value == 0
+    # later the device switches to AUTO
+    acc.update_state(set_point_mode=0)
+    assert svc.get_characteristic("TargetHeatingCoolingState").value == 3
+    # and back to MANU with a real setpoint → Heat
+    acc.update_state(set_point_mode=1)
+    acc.update_state(target_temp=21.0)
+    assert svc.get_characteristic("TargetHeatingCoolingState").value == 1
 
 
 def test_writable_characteristics_per_type(driver):

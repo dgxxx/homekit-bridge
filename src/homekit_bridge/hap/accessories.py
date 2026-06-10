@@ -162,40 +162,70 @@ class ThermostatAccessory(Accessory):
         self._char_target.override_properties(
             properties={"minValue": 10.0, "maxValue": 30.5, "minStep": 0.5}
         )
-        # Heating-only device: no cool/auto modes
-        self._char_hc_target.override_properties(valid_values={"Off": 0, "Heat": 1})
+        # Heating device with HmIP schedule: Off / Heat / Auto (no cooling)
+        self._char_hc_target.override_properties(
+            valid_values={"Off": 0, "Heat": 1, "Auto": 3}
+        )
         self._char_hc_current.set_value(1)
         self._char_hc_target.set_value(1)
+        # HmIP SET_POINT_MODE: 0 = AUTO (weekly profile), 1 = MANU. Last raw setpoint
+        # (may be the 4.5 °C frost value) is remembered to derive Off vs Heat.
+        self._set_point_mode = 1
+        self._raw_setpoint: Optional[float] = None
 
     def update_state(
         self,
         current_temp: Optional[float] = None,
         target_temp: Optional[float] = None,
         humidity: Optional[float] = None,
+        set_point_mode: Optional[int] = None,
     ) -> None:
         if current_temp is not None:
             self._char_current.set_value(current_temp)
-        if target_temp is not None:
-            if target_temp < self._OFF_THRESHOLD:
-                # Frost/eco setpoint == off; keep the last heating setpoint
-                self._char_hc_current.set_value(0)
-                self._char_hc_target.set_value(0)
-            else:
-                self._char_target.set_value(target_temp)
-                self._char_hc_current.set_value(1)
-                self._char_hc_target.set_value(1)
         if humidity is not None:
             self._char_humidity.set_value(humidity)
+        if target_temp is not None:
+            self._raw_setpoint = target_temp
+            if target_temp >= self._OFF_THRESHOLD:
+                # Keep the last real heating setpoint for display + Heat restore;
+                # frost/eco values below 10 °C never overwrite it.
+                self._char_target.set_value(target_temp)
+        if set_point_mode is not None:
+            self._set_point_mode = set_point_mode
+        if target_temp is not None or set_point_mode is not None:
+            self._apply_mode()
 
-    def setpoint_for_mode(self, mode: int) -> float:
-        """HM setpoint realizing a HomeKit mode write (0=off, 1=heat).
+    def _apply_mode(self) -> None:
+        """Derive HomeKit heat/cool state from SET_POINT_MODE + last setpoint."""
+        if self._set_point_mode == 0:           # HmIP AUTO → HomeKit Auto
+            self._char_hc_target.set_value(3)
+            # CurrentHeatingCoolingState has no "Auto"; we show Heat. (Even if the
+            # scheduled setpoint is momentarily frost, Current stays Heat — acceptable.)
+            self._char_hc_current.set_value(1)
+            return
+        # MANU: frost setpoint == off, otherwise heating
+        if self._raw_setpoint is not None and self._raw_setpoint < self._OFF_THRESHOLD:
+            self._char_hc_current.set_value(0)
+            self._char_hc_target.set_value(0)
+        else:
+            self._char_hc_current.set_value(1)
+            self._char_hc_target.set_value(1)
 
-        "Heat" restores the last heating setpoint still held by the
-        TargetTemperature characteristic (never overwritten by "off").
+    def writes_for_mode(self, mode: int) -> dict:
+        """HM datapoints realizing a HomeKit mode write.
+
+        Off (0)  → frost setpoint (forces MANU on the device).
+        Auto (3) → SET_POINT_MODE 0 (follow the HmIP weekly profile).
+        Heat (1) → SET_POINT_MODE 1 (MANU) + restore the last heating setpoint
+                   still held by TargetTemperature (never overwritten by "off").
+                   On a fresh accessory (no setpoint received yet) this is
+                   TargetTemperature's initial value (the HAP minimum).
         """
         if mode == 0:
-            return self.OFF_SETPOINT
-        return float(self._char_target.value)
+            return {"SET_POINT_TEMPERATURE": self.OFF_SETPOINT}
+        if mode == 3:
+            return {"SET_POINT_MODE": 0}
+        return {"SET_POINT_MODE": 1, "SET_POINT_TEMPERATURE": float(self._char_target.value)}
 
     def writable_characteristics(self) -> dict:
         return {"target_temp": self._char_target, "mode": self._char_hc_target}

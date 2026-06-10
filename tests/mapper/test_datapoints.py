@@ -34,3 +34,7 @@ def test_unknown_type_returns_none():
 def test_write_datapoints_table():
     assert WRITE_DATAPOINTS[HKType.THERMOSTAT]["target_temp"].kwarg == "SET_POINT_TEMPERATURE"
     assert WRITE_DATAPOINTS[HKType.SWITCH]["on"].kwarg == "STATE"
+
+
+def test_thermostat_mode_write_uses_writes_for_mode():
+    assert WRITE_DATAPOINTS[HKType.THERMOSTAT]["mode"].via == "writes_for_mode"

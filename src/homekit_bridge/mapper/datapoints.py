@@ -49,7 +49,9 @@ READ_DATAPOINTS: dict[HKType, dict[str, DP]] = {
 WRITE_DATAPOINTS: dict[HKType, dict[str, DP]] = {
     HKType.THERMOSTAT: {
         "target_temp": DP("SET_POINT_TEMPERATURE"),
-        "mode": DP("SET_POINT_TEMPERATURE", via="setpoint_for_mode"),
+        # mode: writes_for_mode returns a {datapoint: value} dict, so the kwarg below
+        # is unused (the converter chooses SET_POINT_MODE / SET_POINT_TEMPERATURE itself).
+        "mode": DP("SET_POINT_TEMPERATURE", via="writes_for_mode"),
     },
     HKType.SWITCH:     {"on": DP("STATE")},
     HKType.OUTLET:     {"on": DP("STATE")},
