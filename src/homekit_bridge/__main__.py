@@ -317,7 +317,7 @@ def _log_pairing_info(driver: AccessoryDriver) -> None:
             qr.add_data(driver.accessory.xhm_uri())
             qr.print_ascii(invert=True)
         except Exception:
-            pass  # qrcode optional / accessory not ready
+            pass  # accessory not ready
     except Exception:
         logger.debug("Could not read HAP pairing PIN", exc_info=True)
 

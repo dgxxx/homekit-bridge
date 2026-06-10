@@ -601,13 +601,18 @@ function renderPairing() {
     statusEl.textContent = "Pairing-Info nicht verfügbar";
     pinEl.textContent = "—";
     qrEl.removeAttribute("src");
+    delete qrEl.dataset.uri;
     return;
   }
   statusEl.textContent = state.pairing.paired ? "Gekoppelt" : "Nicht gekoppelt";
   statusEl.classList.toggle("is-paired", state.pairing.paired);
   pinEl.textContent = state.pairing.pin;
-  // Cache-bust so a re-render after re-pairing reloads a fresh QR.
-  qrEl.src = "/api/pairing/qr.svg?ts=" + Date.now();
+  // Load the QR only when the pairing URI changes — avoids reloading
+  // (and flickering) the image on every poll while the tab is open.
+  if (qrEl.dataset.uri !== state.pairing.uri) {
+    qrEl.dataset.uri = state.pairing.uri;
+    qrEl.src = "/api/pairing/qr.svg?ts=" + Date.now();
+  }
 }
 
 /* =================================================================
@@ -682,6 +687,9 @@ async function poll() {
     }
     if (state.activeView === "logs") {
       fetchLogs();
+    }
+    if (state.activeView === "pairing") {
+      fetchPairing();
     }
 
     setPollIndicator(true);
