@@ -286,6 +286,7 @@ def test_thermostat_mode_off_publishes_frost_setpoint(driver, store, bus, ccu3):
         "TargetHeatingCoolingState")
     char.client_update_value(0)
     assert ("TH:1", "SET_POINT_TEMPERATURE", 4.5) in ccu3.set_calls
+    assert ("TH:1", "SET_POINT_MODE", 1) in ccu3.set_calls
 
 
 def test_thermostat_mode_heat_restores_last_setpoint(driver, store, bus, ccu3):

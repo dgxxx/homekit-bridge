@@ -211,7 +211,7 @@ class ThermostatAccessory(Accessory):
             self._char_hc_current.set_value(1)
             self._char_hc_target.set_value(1)
 
-    def writes_for_mode(self, mode: int) -> dict:
+    def writes_for_mode(self, mode: int) -> dict[str, int | float]:
         """HM datapoints realizing a HomeKit mode write.
 
         Off (0)  → frost setpoint (forces MANU on the device).
@@ -222,7 +222,9 @@ class ThermostatAccessory(Accessory):
                    TargetTemperature's initial value (the HAP minimum).
         """
         if mode == 0:
-            return {"SET_POINT_TEMPERATURE": self.OFF_SETPOINT}
+            # Force MANU so "off" sticks even if the device was in AUTO; the frost
+            # setpoint (4.5 °C) is what actually turns the heating off.
+            return {"SET_POINT_MODE": 1, "SET_POINT_TEMPERATURE": self.OFF_SETPOINT}
         if mode == 3:
             return {"SET_POINT_MODE": 0}
         return {"SET_POINT_MODE": 1, "SET_POINT_TEMPERATURE": float(self._char_target.value)}

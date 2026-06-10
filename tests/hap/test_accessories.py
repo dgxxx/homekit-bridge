@@ -267,7 +267,8 @@ def test_thermostat_target_temperature_range_is_homekit_compliant(driver):
 def test_thermostat_writes_for_mode(driver):
     acc = ThermostatAccessory(driver, "Thermo")
     acc.update_state(target_temp=22.0)  # establishes the last heating setpoint
-    assert acc.writes_for_mode(0) == {"SET_POINT_TEMPERATURE": 4.5}        # Off
+    assert acc.writes_for_mode(0) == {"SET_POINT_MODE": 1,
+                                      "SET_POINT_TEMPERATURE": 4.5}         # Off (forces MANU)
     assert acc.writes_for_mode(3) == {"SET_POINT_MODE": 0}                 # Auto
     assert acc.writes_for_mode(1) == {"SET_POINT_MODE": 1,
                                       "SET_POINT_TEMPERATURE": 22.0}       # Heat
