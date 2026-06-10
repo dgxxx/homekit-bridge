@@ -642,3 +642,115 @@ input, select {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------
+   11. Pairing view
+   --------------------------------------------------------- */
+.pairing__heading {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+.pairing-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  align-items: center;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  box-shadow: var(--shadow-card);
+}
+
+.pairing-card__qr {
+  background: #fff;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+}
+
+.pairing-card__qr img {
+  display: block;
+  width: 240px;
+  height: 240px;
+}
+
+.pairing-card__pin {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-family: var(--font-mono);
+  margin: 0.25rem 0 1rem;
+}
+
+.pairing-card__pin-label,
+.pairing-card__hint {
+  color: var(--color-text-muted, #667);
+  margin: 0;
+}
+
+.pairing-card__status.is-paired {
+  color: var(--color-success, #2a8a4a);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------
+   12. Logs view
+   --------------------------------------------------------- */
+.logs__toolbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.logs__heading {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.logs__filter {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.logs__filter select {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.log-viewer {
+  margin-top: 1rem;
+  max-height: 65vh;
+  overflow-y: auto;
+  background: #0f1115;
+  color: #d6d9df;
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.log-line {
+  display: grid;
+  grid-template-columns: 5.5rem 4.5rem 9rem 1fr;
+  gap: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-line__ts { color: #7f8694; }
+.log-line__logger { color: #8aa9c0; }
+.log-line--WARNING .log-line__level { color: #e0a042; }
+.log-line--ERROR .log-line__level,
+.log-line--CRITICAL .log-line__level { color: #e05656; }
+.log-line--INFO .log-line__level { color: #5aa9e0; }
+.log-line--DEBUG .log-line__level { color: #7f8694; }

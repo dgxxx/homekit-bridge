@@ -36,7 +36,7 @@ const HK_TYPES = [
 
 /** Application state — plain object, mutated in place */
 const state = {
-  /** @type {"dashboard"|"devices"|"solar"} */
+  /** @type {"dashboard"|"devices"|"solar"|"pairing"|"logs"} */
   activeView: "dashboard",
 
   /** @type {null|{power_w:number, energy_today_kwh:number, battery_pct:number|null, producing:boolean, available:boolean}} */
@@ -50,6 +50,15 @@ const state = {
 
   /** pending row edits keyed by address */
   rowEdits: {},
+
+  /** @type {null|{pin:string, uri:string, paired:boolean}} */
+  pairing: null,
+
+  /** @type {Array<{ts:number, level:string, logger:string, message:string}>} */
+  logs: [],
+
+  /** current log level filter */
+  logLevel: "INFO",
 };
 
 /* =================================================================
@@ -126,7 +135,7 @@ function initNavigation() {
 }
 
 /**
- * @param {"dashboard"|"devices"|"solar"} viewId
+ * @param {"dashboard"|"devices"|"solar"|"pairing"|"logs"} viewId
  */
 function switchView(viewId) {
   state.activeView = viewId;
@@ -147,6 +156,9 @@ function switchView(viewId) {
   if (viewId === "devices" && state.devices.length === 0) {
     refreshDevices();
   }
+
+  if (viewId === "pairing") fetchPairing();
+  if (viewId === "logs") fetchLogs();
 }
 
 /* =================================================================
@@ -567,6 +579,75 @@ function initDeviceSearch() {
 }
 
 /* =================================================================
+   Pairing view
+   ================================================================= */
+
+async function fetchPairing() {
+  try {
+    state.pairing = await apiFetch("/api/pairing");
+  } catch (err) {
+    state.pairing = null;
+  }
+  renderPairing();
+}
+
+function renderPairing() {
+  const statusEl = document.getElementById("pairing-status");
+  const pinEl = document.getElementById("pairing-pin");
+  const qrEl = document.getElementById("pairing-qr");
+  if (!statusEl || !pinEl || !qrEl) return;
+
+  if (!state.pairing) {
+    statusEl.textContent = "Pairing-Info nicht verfügbar";
+    pinEl.textContent = "—";
+    qrEl.removeAttribute("src");
+    return;
+  }
+  statusEl.textContent = state.pairing.paired ? "Gekoppelt" : "Nicht gekoppelt";
+  statusEl.classList.toggle("is-paired", state.pairing.paired);
+  pinEl.textContent = state.pairing.pin;
+  // Cache-bust so a re-render after re-pairing reloads a fresh QR.
+  qrEl.src = "/api/pairing/qr.svg?ts=" + Date.now();
+}
+
+/* =================================================================
+   Logs view
+   ================================================================= */
+
+async function fetchLogs() {
+  const q = state.logLevel ? "?level=" + encodeURIComponent(state.logLevel) : "";
+  try {
+    const data = await apiFetch("/api/logs" + q);
+    state.logs = data.records || [];
+  } catch (err) {
+    state.logs = [];
+  }
+  renderLogs();
+}
+
+function renderLogs() {
+  const viewer = document.getElementById("log-viewer");
+  if (!viewer) return;
+  if (state.logs.length === 0) {
+    viewer.innerHTML = '<div class="state-message">Keine Log-Einträge</div>';
+    return;
+  }
+  viewer.innerHTML = state.logs.map((r) => {
+    const t = new Date(r.ts * 1000).toLocaleTimeString("de-DE");
+    const level = escHtml(r.level);
+    return (
+      '<div class="log-line log-line--' + level + '">' +
+      '<span class="log-line__ts">' + t + "</span>" +
+      '<span class="log-line__level">' + level + "</span>" +
+      '<span class="log-line__logger">' + escHtml(r.logger) + "</span>" +
+      '<span class="log-line__msg">' + escHtml(r.message) + "</span>" +
+      "</div>"
+    );
+  }).join("");
+  viewer.scrollTop = viewer.scrollHeight;
+}
+
+/* =================================================================
    8. Polling / lifecycle
    ================================================================= */
 
@@ -598,6 +679,9 @@ async function poll() {
     }
     if (state.activeView === "solar") {
       renderSolarViewFull();
+    }
+    if (state.activeView === "logs") {
+      fetchLogs();
     }
 
     setPollIndicator(true);
@@ -678,6 +762,15 @@ document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   initDeviceSearch();
   startPolling();
+
+  const logLevelEl = document.getElementById("log-level");
+  if (logLevelEl) {
+    state.logLevel = logLevelEl.value;
+    logLevelEl.addEventListener("change", () => {
+      state.logLevel = logLevelEl.value;
+      fetchLogs();
+    });
+  }
 
   // When user switches to devices tab, load the table
   document.querySelectorAll(".nav__tab").forEach(tab => {

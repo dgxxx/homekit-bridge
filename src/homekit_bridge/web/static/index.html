@@ -44,6 +44,24 @@
         id="tab-solar"
         data-view="solar"
       >Solar</button>
+
+      <button
+        class="nav__tab"
+        role="tab"
+        aria-selected="false"
+        aria-controls="view-pairing"
+        id="tab-pairing"
+        data-view="pairing"
+      >Verbindung</button>
+
+      <button
+        class="nav__tab"
+        role="tab"
+        aria-selected="false"
+        aria-controls="view-logs"
+        id="tab-logs"
+        data-view="logs"
+      >Logs</button>
     </div>
 
     <div class="nav__status" aria-live="polite" id="nav-status">
@@ -173,6 +191,55 @@
           </div>
         </div>
       </section>
+    </section>
+
+    <!-- ----- View: Verbindung ----- -->
+    <section
+      class="view"
+      id="view-pairing"
+      role="tabpanel"
+      aria-labelledby="tab-pairing"
+    >
+      <h1 class="pairing__heading">Mit HomeKit verbinden</h1>
+      <div class="pairing-card" id="pairing-card">
+        <div class="pairing-card__qr">
+          <img id="pairing-qr" alt="HomeKit Pairing QR-Code" />
+        </div>
+        <div class="pairing-card__info">
+          <p class="pairing-card__status" id="pairing-status">Lade&#8230;</p>
+          <p class="pairing-card__pin-label">Setup-Code</p>
+          <p class="pairing-card__pin" id="pairing-pin">&#8212;</p>
+          <p class="pairing-card__hint">
+            Home-App &rarr; Ger&auml;t hinzuf&uuml;gen &rarr; QR-Code scannen
+            oder Code manuell eingeben.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ----- View: Logs ----- -->
+    <section
+      class="view"
+      id="view-logs"
+      role="tabpanel"
+      aria-labelledby="tab-logs"
+    >
+      <div class="logs__toolbar">
+        <h1 class="logs__heading">Logs</h1>
+        <label class="logs__filter" for="log-level">
+          Level:
+          <select id="log-level">
+            <option value="">Alle</option>
+            <option value="DEBUG">DEBUG</option>
+            <option value="INFO" selected>INFO</option>
+            <option value="WARNING">WARNING</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+        </label>
+      </div>
+      <div class="log-viewer" id="log-viewer" aria-live="polite">
+        <div class="state-message">Lade Logs&#8230;</div>
+      </div>
     </section>
 
   </main>
