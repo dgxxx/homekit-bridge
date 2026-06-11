@@ -51,6 +51,9 @@ const state = {
   /** pending row edits keyed by address */
   rowEdits: {},
 
+  /** @type {Set<string>} room names whose device table group is collapsed */
+  collapsedRooms: new Set(),
+
   /** @type {null|{pin:string, uri:string, paired:boolean}} */
   pairing: null,
 
@@ -403,36 +406,80 @@ function filterDevices(query) {
  * @param {Array} devices
  */
 function renderDeviceTable(devices) {
-  const tbody   = document.getElementById("device-tbody");
+  const table   = document.getElementById("device-table");
+  const tbody   = document.getElementById("device-tbody");  // message-only tbody
   const countEl = document.getElementById("devices-count");
 
-  if (!tbody) return;
+  if (!table || !tbody) return;
 
   if (countEl) {
     countEl.textContent = `${devices.length} Geraete`;
   }
 
+  // Drop any room sections from a previous render before rebuilding.
+  table.querySelectorAll("tbody.room-section").forEach(el => el.remove());
+
   if (devices.length === 0) {
+    tbody.hidden = false;
     tbody.innerHTML =
       '<tr><td colspan="6" class="state-message">Keine Geraete gefunden.</td></tr>';
     return;
   }
 
+  // Messages live in #device-tbody; the device rows go into per-room sections.
+  tbody.hidden = true;
+  tbody.innerHTML = "";
+
   // Group devices by their CCU3 room (read-only). Devices without a room
-  // assignment are collected under a trailing "Ohne Raum" group.
+  // assignment are collected under a trailing "Ohne Raum" group. Each room is
+  // its own <tbody> so it can be collapsed and visually separated as a block.
   const groups = groupByRoom(devices);
 
-  tbody.innerHTML = groups.map(([room, items]) => {
+  const sectionsHtml = groups.map(([room, items]) => {
+    const safeRoom = escHtml(room);
+    const collapsed = state.collapsedRooms.has(room);
     const header = `
       <tr class="room-group">
-        <th colspan="6" scope="rowgroup">${escHtml(room)} <span
-          class="room-group__count">(${items.length})</span></th>
+        <th colspan="6" scope="rowgroup">
+          <button type="button" class="room-group__toggle" data-room="${safeRoom}"
+            aria-expanded="${collapsed ? "false" : "true"}">
+            <span class="room-group__chevron" aria-hidden="true">&#9656;</span>
+            <span class="room-group__name">${safeRoom}</span>
+            <span class="room-group__count">(${items.length})</span>
+          </button>
+        </th>
       </tr>`;
-    return header + items.map(device => buildDeviceRow(device)).join("");
+    const rows = items.map(device => buildDeviceRow(device)).join("");
+    const cls = "room-section" + (collapsed ? " room-section--collapsed" : "");
+    return `<tbody class="${cls}" data-room="${safeRoom}">${header}${rows}</tbody>`;
   }).join("");
+
+  tbody.insertAdjacentHTML("afterend", sectionsHtml);
 
   // Attach per-row event listeners
   devices.forEach(device => bindRowEvents(device.address));
+  // Attach collapse toggles
+  table.querySelectorAll(".room-group__toggle").forEach(btn => {
+    btn.addEventListener("click", () => toggleRoom(btn.dataset.room));
+  });
+}
+
+/**
+ * Toggle the collapsed state of one room group and reflect it in the DOM
+ * without a full re-render (so it stays snappy and keeps scroll position).
+ * @param {string} room
+ */
+function toggleRoom(room) {
+  const willCollapse = !state.collapsedRooms.has(room);
+  if (willCollapse) state.collapsedRooms.add(room);
+  else state.collapsedRooms.delete(room);
+
+  const section = document.querySelector(`tbody.room-section[data-room="${CSS.escape(room)}"]`);
+  if (section) {
+    section.classList.toggle("room-section--collapsed", willCollapse);
+    const btn = section.querySelector(".room-group__toggle");
+    if (btn) btn.setAttribute("aria-expanded", willCollapse ? "false" : "true");
+  }
 }
 
 const UNASSIGNED_ROOM = "Ohne Raum";

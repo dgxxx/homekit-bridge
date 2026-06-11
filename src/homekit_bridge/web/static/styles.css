@@ -434,27 +434,63 @@ input, select {
   background: var(--color-surface-raised);
 }
 
-/* Room group header (read-only CCU3 room) */
+/* Room group header (read-only CCU3 room), clickable to collapse the section */
 .device-table tr.room-group th {
   background: var(--color-surface-raised);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: var(--color-text);
-  padding: 0.5rem 1rem;
+  padding: 0;
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
 }
 
-.device-table tr.room-group:hover th {
-  background: var(--color-surface-raised);
+/* Visually separate each room block with a gap in the page background colour.
+   A thick top border beats the previous row's 1px border under border-collapse. */
+.device-table tbody.room-section tr.room-group th {
+  border-top: 8px solid var(--color-bg);
+}
+
+.room-group__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-text);
+}
+
+.room-group__toggle:hover {
+  background: var(--color-surface);
+}
+
+.room-group__chevron {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  transition: transform 0.15s ease;
+  transform: rotate(90deg);   /* expanded: points down */
+}
+
+.room-group__toggle[aria-expanded="false"] .room-group__chevron {
+  transform: rotate(0deg);    /* collapsed: points right */
 }
 
 .room-group__count {
   color: var(--color-text-muted);
   font-weight: 500;
+}
+
+/* Collapsed section: hide everything but its header row */
+.device-table tbody.room-section--collapsed tr:not(.room-group) {
+  display: none;
 }
 
 /* Export toggle */
