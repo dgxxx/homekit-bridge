@@ -178,6 +178,56 @@ def test_build_exposes_log_buffer(tmp_path, monkeypatch):
     assert components.log_buffer in logging.getLogger().handlers
 
 
+def test_build_passes_fixed_pin_and_mac_to_driver(tmp_path, monkeypatch):
+    """A configured HOMEKIT_PIN/HOMEKIT_MAC must reach the AccessoryDriver.
+
+    pyhap does not persist the pincode, so without this the setup code is
+    randomly regenerated on every restart. Passing a fixed pincode (bytes) and
+    mac keeps the setup code stable and preserves the bridge identity even if
+    hap.state is lost.
+    """
+    import homekit_bridge.__main__ as m
+
+    monkeypatch.setenv("STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("HOMEKIT_PIN", "843-19-572")
+    monkeypatch.setenv("HOMEKIT_MAC", "11:6D:AA:50:70:CA")
+
+    captured = {}
+    real_driver = m.AccessoryDriver
+
+    def capturing_driver(*args, **kwargs):
+        captured.update(kwargs)
+        return real_driver(*args, **kwargs)
+
+    monkeypatch.setattr(m, "AccessoryDriver", capturing_driver)
+    m.build(fakes={"mqtt_client": FakeMqttClient()})
+
+    assert captured["pincode"] == b"843-19-572"
+    assert captured["mac"] == "11:6D:AA:50:70:CA"
+
+
+def test_build_driver_pin_mac_default_none(tmp_path, monkeypatch):
+    """Without the env vars, pincode/mac default to None (pyhap generates them)."""
+    import homekit_bridge.__main__ as m
+
+    monkeypatch.setenv("STATE_DIR", str(tmp_path))
+    monkeypatch.delenv("HOMEKIT_PIN", raising=False)
+    monkeypatch.delenv("HOMEKIT_MAC", raising=False)
+
+    captured = {}
+    real_driver = m.AccessoryDriver
+
+    def capturing_driver(*args, **kwargs):
+        captured.update(kwargs)
+        return real_driver(*args, **kwargs)
+
+    monkeypatch.setattr(m, "AccessoryDriver", capturing_driver)
+    m.build(fakes={"mqtt_client": FakeMqttClient()})
+
+    assert captured["pincode"] is None
+    assert captured["mac"] is None
+
+
 def test_bridge_state_pairing_accessors(tmp_path, monkeypatch):
     """_BridgeState exposes the real PIN and xhm:// pairing URI from the driver."""
     monkeypatch.setenv("STATE_DIR", str(tmp_path))

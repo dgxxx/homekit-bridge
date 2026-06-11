@@ -191,9 +191,19 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
 
     bus.subscribe("solaredge.data", _on_solar)
 
-    # HAP driver — port=0 when fakes are injected (tests), real port otherwise
+    # HAP driver — port=0 when fakes are injected (tests), real port otherwise.
+    # A fixed pincode/mac (via HOMEKIT_PIN/HOMEKIT_MAC) keeps the setup code
+    # stable across restarts and preserves the bridge identity even if hap.state
+    # is lost — pyhap otherwise regenerates the pincode on every start (it is
+    # never persisted). Both None => pyhap generates random values as before.
     hap_port = 0 if fakes else _HAP_PORT
-    hap_driver = AccessoryDriver(port=hap_port, persist_file=hap_persist)
+    hap_pincode = settings.homekit_pin.encode() if settings.homekit_pin else None
+    hap_driver = AccessoryDriver(
+        port=hap_port,
+        persist_file=hap_persist,
+        pincode=hap_pincode,
+        mac=settings.homekit_mac,
+    )
     # Let /api/status report the real pairing state from the driver.
     bridge_state.hap_driver = hap_driver
 

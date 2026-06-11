@@ -21,6 +21,12 @@ _STATE_SUFFIX = "/state"
 _DISCOVERY_TOPIC = "homematic/$discovery"
 _SOLAR_TOPIC = "solaredge/state"
 
+# CCU3 system variables (booleans, read + write) ride a dedicated topic level.
+_SYSVAR_PREFIX = "homematic/$sysvar/"        # incoming retained state
+_SYSVAR_ADDR_PREFIX = "sysvar:"              # synthetic address used inside the bridge
+_SYSVAR_HM_TYPE = "SYSVAR_BOOL"
+_SYSVAR_ROOM = "System-Variablen"
+
 
 def _build_devices(entries: list[dict]) -> list[Device]:
     """Rekonstruiert Device/Channel aus der flachen $discovery-Liste."""
@@ -53,6 +59,8 @@ class MqttSource:
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._devices: list[Device] = []
+        # name -> last known boolean value of each discovered CCU3 system variable
+        self._sysvars: dict[str, bool] = {}
         self._connected = False
 
     # --- Ccu3Adapter-kompatible Schnittstelle ---------------------------------
@@ -65,15 +73,41 @@ class MqttSource:
         self._client.loop_start()
 
     def list_devices(self) -> list[Device]:
-        return list(self._devices)
+        devices = list(self._devices)
+        if self._sysvars:
+            devices.append(self._sysvar_device())
+        return devices
 
     def set_value(self, address: str, key: str, value) -> None:
+        if address.startswith(_SYSVAR_ADDR_PREFIX):
+            name = address[len(_SYSVAR_ADDR_PREFIX):]
+            self._client.publish(
+                f"{_SYSVAR_PREFIX}{name}/set", json.dumps({"STATE": bool(value)})
+            )
+            return
         self._client.publish(f"homematic/{address}/set", json.dumps({key: value}))
+
+    def _sysvar_device(self) -> Device:
+        """Expose known system variables as one pseudo-device of boolean channels."""
+        return Device(
+            address="$sysvar",
+            model=_SYSVAR_ROOM,
+            channels=[
+                Channel(
+                    address=f"{_SYSVAR_ADDR_PREFIX}{name}",
+                    hm_type=_SYSVAR_HM_TYPE,
+                    name=name,
+                    room=_SYSVAR_ROOM,
+                )
+                for name in sorted(self._sysvars)
+            ],
+        )
 
     # --- MQTT-Callbacks -------------------------------------------------------
     def _on_connect(self, client, userdata, flags, reason_code, properties) -> None:
         self._connected = True
         client.subscribe("homematic/+/state")
+        client.subscribe("homematic/$sysvar/+/state")
         client.subscribe(_DISCOVERY_TOPIC)
         client.subscribe(_SOLAR_TOPIC)
         logger.info("MQTT verbunden — Topics abonniert")
@@ -90,9 +124,23 @@ class MqttSource:
             self._devices = _build_devices(json.loads(payload))
         elif topic == _SOLAR_TOPIC:
             self._handle_solar(payload)
+        elif topic.startswith(_SYSVAR_PREFIX) and topic.endswith(_STATE_SUFFIX):
+            name = topic[len(_SYSVAR_PREFIX):-len(_STATE_SUFFIX)]
+            self._handle_sysvar_state(name, payload)
         elif topic.startswith(_STATE_PREFIX) and topic.endswith(_STATE_SUFFIX):
             address = topic[len(_STATE_PREFIX):-len(_STATE_SUFFIX)]
             self._handle_ccu3_state(address, payload)
+
+    def _handle_sysvar_state(self, name: str, payload: str) -> None:
+        data = json.loads(payload)
+        if not isinstance(data, dict) or "STATE" not in data:
+            return
+        value = bool(data["STATE"])
+        self._sysvars[name] = value
+        self._bus.publish(
+            "ccu3.state",
+            {"address": f"{_SYSVAR_ADDR_PREFIX}{name}", "key": "STATE", "value": value},
+        )
 
     def _handle_ccu3_state(self, address: str, payload: str) -> None:
         data = json.loads(payload)

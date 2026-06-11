@@ -452,3 +452,46 @@ def test_thermostat_mode_heat_publishes_manu_and_setpoint(driver, store, bus, cc
     char.client_update_value(1)  # Heat
     assert ("TH:1", "CONTROL_MODE", 1) in ccu3.set_calls
     assert ("TH:1", "SET_POINT_TEMPERATURE", 21.5) in ccu3.set_calls
+
+
+# ---------------------------------------------------------------------------
+# CCU3 system variable (sysvar) — full path through the real MqttSource
+# ---------------------------------------------------------------------------
+
+class _FakeMqttClient:
+    def __init__(self):
+        self.published: list[tuple] = []
+        self.on_connect = None
+        self.on_message = None
+
+    def publish(self, topic, payload, retain=False):
+        self.published.append((topic, payload, retain))
+
+    def subscribe(self, topic):
+        pass
+
+
+def test_sysvar_switch_end_to_end_via_mqttsource(driver, store, bus):
+    """A boolean sysvar exported as a Switch: MQTT state drives the On
+    characteristic, and a HomeKit toggle publishes to the sysvar set topic."""
+    import json
+
+    from homekit_bridge.mqttsource import MqttSource
+
+    src = MqttSource(bus, client=_FakeMqttClient())
+    store.set_mapping("sysvar:Kachelofen", exported=True, hk_type=HKType.SWITCH,
+                      name="Kachelofen")
+
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=src, bus=bus)
+    bridge.build()
+
+    # Incoming retained sysvar state → switch turns On
+    src.handle("homematic/$sysvar/Kachelofen/state", '{"STATE": true}')
+    char = bridge.accessories[0].get_service("Switch").get_characteristic("On")
+    assert char.value is True
+
+    # HomeKit toggle Off → publishes {"STATE": false} on the sysvar set topic
+    char.client_update_value(False)
+    topic, payload, _retain = src._client.published[-1]
+    assert topic == "homematic/$sysvar/Kachelofen/set"
+    assert json.loads(payload) == {"STATE": False}

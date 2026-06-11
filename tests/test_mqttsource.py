@@ -106,4 +106,46 @@ def test_connected_reflects_on_connect():
     assert src.connected is True
     assert "homematic/+/state" in src._client.subscriptions
     assert "homematic/$discovery" in src._client.subscriptions
+    assert "homematic/$sysvar/+/state" in src._client.subscriptions
     assert "solaredge/state" in src._client.subscriptions
+
+
+# --- CCU3 system variables (sysvars) ----------------------------------------
+
+def test_sysvar_state_fans_out_as_ccu3_state():
+    src, events = _src()
+    src.handle("homematic/$sysvar/Kachelofen/state", '{"STATE": true}')
+    ccu3 = [e for kind, e in events if kind == "ccu3"]
+    assert {"address": "sysvar:Kachelofen", "key": "STATE", "value": True} in ccu3
+
+
+def test_sysvar_appears_in_list_devices_as_pseudo_channel():
+    src, _ = _src()
+    src.handle("homematic/$sysvar/Kachelofen/state", '{"STATE": false}')
+    channels = [c for d in src.list_devices() for c in d.channels]
+    sysvar = next(c for c in channels if c.address == "sysvar:Kachelofen")
+    assert sysvar.name == "Kachelofen"
+    assert sysvar.hm_type == "SYSVAR_BOOL"
+    assert sysvar.room == "System-Variablen"
+
+
+def test_sysvar_state_without_state_key_ignored():
+    src, events = _src()
+    src.handle("homematic/$sysvar/Kachelofen/state", '{"VALUE": 1}')
+    assert [e for kind, e in events if kind == "ccu3"] == []
+    assert src.list_devices() == []
+
+
+def test_set_value_routes_sysvar_to_sysvar_set_topic():
+    src, _ = _src()
+    src.set_value("sysvar:Kachelofen", "STATE", True)
+    topic, payload, _retain = src._client.published[0]
+    assert topic == "homematic/$sysvar/Kachelofen/set"
+    assert json.loads(payload) == {"STATE": True}
+
+
+def test_set_value_sysvar_coerces_truthy_to_bool():
+    src, _ = _src()
+    src.set_value("sysvar:Kachelofen", "STATE", 1)
+    _topic, payload, _retain = src._client.published[0]
+    assert json.loads(payload) == {"STATE": True}

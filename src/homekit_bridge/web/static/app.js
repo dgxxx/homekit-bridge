@@ -45,7 +45,7 @@ const state = {
   /** @type {null|{paired:boolean, accessory_count:number, ccu3_connected:boolean, solaredge_connected:boolean}} */
   status: null,
 
-  /** @type {Array<{address:string, type:string, room:string, exported:boolean, hk_type:string|null, suggested_hk_type:string|null, name:string}>} */
+  /** @type {Array<{address:string, type:string, type_desc:string, room:string, exported:boolean, hk_type:string|null, suggested_hk_type:string|null, name:string}>} */
   devices: [],
 
   /** pending row edits keyed by address */
@@ -463,12 +463,18 @@ function groupByRoom(devices) {
  * Dropdown shows the explicit hk_type override when set; falls back to
  * suggested_hk_type (auto-detected from HM type) when the user has not yet
  * configured an override.
- * @param {{ address:string, type:string, exported:boolean, hk_type:string|null, suggested_hk_type:string|null, name:string }} device
+ * @param {{ address:string, type:string, type_desc:string, exported:boolean, hk_type:string|null, suggested_hk_type:string|null, name:string }} device
  * @returns {string}
  */
 function buildDeviceRow(device) {
-  const { address, type, name, exported, hk_type, suggested_hk_type } = device;
+  const { address, type, type_desc, name, exported, hk_type, suggested_hk_type } = device;
   const safeAddr = escHtml(address);
+
+  // Role hint under the raw HM type — clarifies which channel of a multi-channel
+  // device is the controllable one (e.g. the blind actuator vs its button channel).
+  const descHtml = type_desc
+    ? `<div class="type-desc">${escHtml(type_desc)}</div>`
+    : "";
 
   // Effective dropdown value: explicit override > auto-suggestion > blank ("— auto —")
   const effectiveType = hk_type ?? suggested_hk_type ?? "";
@@ -494,7 +500,7 @@ function buildDeviceRow(device) {
         />
       </td>
       <td><code class="address">${safeAddr}</code></td>
-      <td>${escHtml(type)}</td>
+      <td><code class="hm-type">${escHtml(type)}</code>${descHtml}</td>
       <td>
         <select
           class="hktype-select"

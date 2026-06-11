@@ -48,6 +48,9 @@ _HM_RULES: list[tuple[str, HKType]] = [
     ("TEMPERATURE",  HKType.TEMPERATURE),
     ("WEATHER",      HKType.TEMPERATURE),
 
+    # Boolean CCU3 system variables — default to a toggleable Switch
+    ("SYSVAR",       HKType.SWITCH),
+
     # Generic switches / outlets
     ("SWITCH",       HKType.SWITCH),
     ("OUTLET",       HKType.OUTLET),
@@ -65,6 +68,60 @@ def auto_hk_type(hm_type: str) -> Optional[HKType]:
         if substring in upper:
             return hk
     return None
+
+
+# ---------------------------------------------------------------------------
+# Human-readable role hints for the device table.
+#
+# Derived purely from the raw Homematic channel-type string — the same source
+# auto_hk_type uses.  Goal: make it obvious *which* channel of a multi-channel
+# device is the controllable one (e.g. a HmIP-BROLL's :4 actuator vs its :1
+# button channel), so the right channel gets exported.  Ordered list, first
+# substring match wins, case-insensitive.
+# ---------------------------------------------------------------------------
+
+_HM_DESCRIPTIONS: list[tuple[str, str]] = [
+    # Shutter family — disambiguate actuator vs status vs contact before SHUTTER.
+    ("SHUTTER_CONTACT",          "Tür-/Fensterkontakt – offen/geschlossen (nur lesbar)"),
+    ("SHUTTER_VIRTUAL_RECEIVER", "Rollladen-/Jalousie-Aktor – Position lesen + fahren (steuerbar)"),
+    ("SHUTTER_TRANSMITTER",      "Rollladen-Position – Statuskanal (nur lesbar)"),
+    ("BLIND",                    "Rollladen-/Jalousie-Aktor – Position lesen + fahren (steuerbar)"),
+    ("SHUTTER",                  "Rollladen-/Jalousie – Position (steuerbar)"),
+
+    # Buttons: send key presses, expose no state and no position.
+    ("KEY",                      "Tastenkanal – sendet nur Tastendrücke (kein Status, keine Position)"),
+
+    # Maintenance / device-wide operating data.
+    ("MAINTENANCE",              "Wartungskanal – Betriebsdaten (Batterie, Funkqualität)"),
+
+    # Climate.
+    ("CLIMATECONTROL",           "Thermostat – Soll-/Ist-Temperatur und Modus (steuerbar)"),
+    ("THERMALCONTROL",           "Thermostat – Soll-/Ist-Temperatur und Modus (steuerbar)"),
+    ("THERMOSTAT",               "Thermostat – Soll-/Ist-Temperatur und Modus (steuerbar)"),
+
+    ("MOTION",                   "Bewegungsmelder – erkennt Bewegung (nur lesbar)"),
+    ("DIMMER",                   "Dimmer – Helligkeit lesen + setzen (steuerbar)"),
+    ("SWITCH",                   "Schaltaktor – ein/aus (steuerbar)"),
+    ("OUTLET",                   "Schaltbare Steckdose – ein/aus (steuerbar)"),
+    ("HUMIDITY",                 "Feuchte-Sensor – relative Luftfeuchte (nur lesbar)"),
+    ("WEATHER",                  "Wetter-/Temperatur-Sensor (nur lesbar)"),
+    ("TEMPERATURE",              "Temperatur-Sensor (nur lesbar)"),
+    ("SYSVAR",                   "CCU-Systemvariable (boolesch) – lesen/schalten"),
+    ("CONTACT",                  "Kontakt-Sensor – offen/geschlossen (nur lesbar)"),
+]
+
+
+def describe_hm_type(hm_type: str) -> str:
+    """Return a short German role hint for a raw Homematic channel-type string.
+
+    Empty string when the type is unknown — the UI then shows no hint rather
+    than a misleading guess.
+    """
+    upper = hm_type.upper()
+    for substring, desc in _HM_DESCRIPTIONS:
+        if substring in upper:
+            return desc
+    return ""
 
 
 def resolve_hk_type(

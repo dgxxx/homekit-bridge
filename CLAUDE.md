@@ -18,11 +18,12 @@ direkten Hardware-Adapter mehr.
 
 ```
 MQTT-Broker (127.0.0.1:1883)
-  homematic/+/state  (retained, von ccu3-Dienst)
-  homematic/$discovery  (retained, von ccu3-Dienst)
-  solaredge/state    (retained, von solaredge-Dienst)
+  homematic/+/state            (retained, von ccu3-Dienst)
+  homematic/$discovery         (retained, von ccu3-Dienst; Kanäle inkl. room)
+  homematic/$sysvar/+/state    (retained, von ccu3-Dienst; boolesche Systemvariablen)
+  solaredge/state              (retained, von solaredge-Dienst)
         │  subscribe                                   ▲ publish homematic/<addr>/set
-        ▼                                              │
+        ▼                                              │   bzw. homematic/$sysvar/<name>/set
 ┌─────────────────────────────────────────────────────────────────┐
 │  Docker-Container · Python 3.12                                  │
 │  MqttSource   device_mapper                                      │
@@ -38,6 +39,16 @@ Kommunikation zwischen Subsystemen über einen **In-Process-Eventbus** (`events.
 `MqttSource` ist ein Drop-in für den früheren `Ccu3Adapter` — gleiche Schnittstelle
 (`list_devices()`, `set_value()`, `connected`, `start()`), gleiche Bus-Topics
 (`ccu3.state`, `solaredge.data`). Der Rest der Bridge ist unangetastet.
+
+**CCU3-Systemvariablen (Sysvars):** Boolesche Systemvariablen (z. B. „Kachelofen")
+kommen retained auf `homematic/$sysvar/<name>/state` (`{"STATE": bool}`) und sind über
+`homematic/$sysvar/<name>/set` schaltbar — sofern der `ccu3`-Dienst sie in
+`CCU3_SYSTEM_VARIABLES` freigegeben hat. In der Bridge laufen sie unter der
+Synthetik-Adresse `sysvar:<name>` (hm_type `SYSVAR_BOOL`) durch die **unveränderte**
+Geräte-Pipeline: `MqttSource` reicht sie als Pseudo-Kanäle (Raum „System-Variablen") in
+`list_devices()` durch, der User vergibt in der Web-UI HK-Typ (Default-Vorschlag: Switch)
++ Export, und Reconcile baut daraus ein normales Accessory. Read-only-Typen
+(Contact/Motion) sind ebenfalls wählbar. Kein neuer UI-/HAP-Code nötig.
 
 **Bekannte Einschränkung:** `solaredge/state` enthält kein Tagesenergie-Feld →
 `PVData.energy_today_kwh = 0.0`. Das PV-Energie-Accessory zeigt 0 kWh. Falls benötigt,
@@ -98,10 +109,23 @@ ruff check src tests
 | `MQTT_PORT` | nein | `1883` | Port des MQTT-Brokers |
 | `WEB_PASSWORD` | nein | — | Passwort für die Web-UI (HTTP Basic) |
 | `STATE_DIR` | nein | `./state` | Verzeichnis für SQLite-DB + HAP-Pairing |
+| `HOMEKIT_PIN` | nein | random | Fester HomeKit-Setup-Code (`ddd-dd-ddd`). Siehe unten. |
+| `HOMEKIT_MAC` | nein | random | Feste Bridge-Identität (`XX:XX:XX:XX:XX:XX`). Siehe unten. |
 | `WEB_HOST` | nein | `0.0.0.0` | Bind-Adresse der Web-UI |
 | `WEB_PORT` | nein | `8095` | Port der Web-UI |
 
 Secrets **nie** in SQLite oder Code — nur Env-Vars.
+
+**`HOMEKIT_PIN` / `HOMEKIT_MAC` — stabile Pairing-Identität:** pyhap persistiert in
+`hap.state` zwar `mac`, Schlüssel und `paired_clients`, **nicht aber den Pincode** — der
+wird bei *jedem* Start neu generiert. Ohne `HOMEKIT_PIN` ändert sich der Setup-Code also
+laufend (relevant nur für *neue* Geräte; bestehende Pairings bleiben über die gespeicherten
+Schlüssel gültig). Mit gesetztem `HOMEKIT_PIN` ist der Code stabil. `HOMEKIT_MAC` legt die
+Bridge-Identität fest: bei vorhandener `hap.state` wird der dort gespeicherte Wert geladen
+(muss übereinstimmen), geht `hap.state` aber verloren, sorgt `HOMEKIT_MAC` dafür, dass die
+**gleiche** Identität neu entsteht → kein Re-Pairing nötig. Beide werden als Konstruktor-
+Argument an den `AccessoryDriver` durchgereicht (`__main__.py`). Sind sie leer/ungesetzt,
+würfelt pyhap wie bisher zufällige Werte.
 
 ---
 
@@ -134,7 +158,7 @@ nicht mitgeprüft wurde.
 
 **v2 (MQTT-Refactor) abgeschlossen** — Stand 2026-06-07.
 
-- 171 Tests grün (`pytest -q`), `ruff check` sauber.
+- 178 Tests grün (`pytest -q`), `ruff check` sauber.
 - Bridge ist reiner MQTT-Konsument; `ccu3`- und `solaredge`-Adapter sind eliminiert.
 - Daten kommen von den Quell-Diensten `ccu3` und `solaredge` via MQTT.
 

@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 from homekit_bridge.config import ConfigStore
 from homekit_bridge.events import EventBus
-from homekit_bridge.mapper.device_mapper import auto_hk_type
+from homekit_bridge.mapper.device_mapper import auto_hk_type, describe_hm_type
 from homekit_bridge.models import HKType, PVData
 from homekit_bridge.settings import Settings
 
@@ -57,6 +57,7 @@ class DeviceMappingIn(BaseModel):
 class DeviceMappingOut(BaseModel):
     address: str
     type: str = ""                   # raw Homematic channel type (e.g. "SWITCH")
+    type_desc: str = ""              # human-readable role hint derived from the raw type
     room: str = ""                   # CCU3 room assignment (read-only, from discovery)
     exported: bool
     hk_type: Optional[str] = None    # config override
@@ -297,6 +298,7 @@ def _merged_device_list(store: ConfigStore, ccu3_adapter: Any) -> list[dict]:
         result.append({
             "address": address,
             "type": hm_type,
+            "type_desc": describe_hm_type(hm_type),
             "room": room,
             "exported": exported,
             "hk_type": hk_type_obj.value if hk_type_obj else None,

@@ -1,6 +1,11 @@
 import pytest
 
-from homekit_bridge.mapper.device_mapper import auto_hk_type, resolve_hk_type, pv_accessory_specs
+from homekit_bridge.mapper.device_mapper import (
+    auto_hk_type,
+    describe_hm_type,
+    pv_accessory_specs,
+    resolve_hk_type,
+)
 from homekit_bridge.models import Channel, HKType, PVData
 
 
@@ -23,6 +28,7 @@ from homekit_bridge.models import Channel, HKType, PVData
     ("WEATHER_TRANSMIT", HKType.TEMPERATURE),
     ("TEMPERATURE", HKType.TEMPERATURE),
     ("HUMIDITY", HKType.HUMIDITY),
+    ("SYSVAR_BOOL", HKType.SWITCH),         # boolean CCU3 system variable
     ("UNKNOWN_FOO", None),
     ("", None),
 ])
@@ -34,6 +40,32 @@ def test_auto_hk_type_case_insensitive():
     # HM types come in uppercase from the CCU3; the mapper should still handle
     # lowercase gracefully without crashing.
     assert auto_hk_type("switch") == HKType.SWITCH
+
+
+# ---------------------------------------------------------------------------
+# describe_hm_type — human-readable role hint for the device table
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("hm,needle", [
+    # The shutter family must disambiguate: actuator (steuerbar) vs status vs key.
+    ("SHUTTER_VIRTUAL_RECEIVER", "steuerbar"),   # the writable blind actuator
+    ("SHUTTER_TRANSMITTER",      "nur lesbar"),  # read-only level/status
+    ("KEY_TRANSCEIVER",          "Tastenkanal"),  # button: no state, not the actuator
+    ("SHUTTER_CONTACT",          "Kontakt"),      # window/door contact
+    ("MAINTENANCE",              "Wartung"),
+    ("SWITCH_VIRTUAL_RECEIVER",  "Schalt"),
+    ("DIMMER",                   "Dimmer"),
+    ("HEATING_CLIMATECONTROL_TRANSCEIVER", "Thermostat"),
+    ("MOTIONDETECTOR",           "Bewegung"),
+    ("SYSVAR_BOOL",              "Systemvariable"),
+])
+def test_describe_hm_type_contains_hint(hm, needle):
+    assert needle.lower() in describe_hm_type(hm).lower()
+
+
+def test_describe_hm_type_unknown_is_empty():
+    assert describe_hm_type("FOO_BAR_BAZ") == ""
+    assert describe_hm_type("") == ""
 
 
 # ---------------------------------------------------------------------------
