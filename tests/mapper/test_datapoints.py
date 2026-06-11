@@ -18,9 +18,23 @@ def test_thermostat_ignores_unknown_datapoints():
     assert read_update(HKType.THERMOSTAT, "PARTY_MODE", False) is None
 
 
-def test_switch_and_contact_read():
+def test_switch_read():
     assert read_update(HKType.SWITCH, "STATE", True) == {"on": True}
-    assert read_update(HKType.CONTACT, "STATE", False) == {"contact_detected": False}
+
+
+def test_contact_read_inverts_hm_state():
+    # Homematic STATE: 0 = CLOSED, 1 = OPEN (door/window contact).  HomeKit's
+    # ContactSensorAccessory expects ``contact_detected`` = True when *closed*,
+    # so the raw STATE must be inverted on the way in.
+    assert read_update(HKType.CONTACT, "STATE", 0) == {"contact_detected": True}   # closed
+    assert read_update(HKType.CONTACT, "STATE", 1) == {"contact_detected": False}  # open
+
+
+def test_contact_read_rotary_handle_tilted_counts_as_open():
+    # HmIP-SRH rotary handle STATE: 0 = CLOSED, 1 = TILTED, 2 = OPEN.  Anything
+    # other than fully closed must report "not detected" (open) to HomeKit.
+    assert read_update(HKType.CONTACT, "STATE", 2) == {"contact_detected": False}  # open
+    assert read_update(HKType.CONTACT, "STATE", 1) == {"contact_detected": False}  # tilted
 
 
 def test_cover_level_is_scaled_to_percent():

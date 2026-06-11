@@ -22,11 +22,16 @@ class DP:
     ``via`` (write direction only) names an accessory method that converts the
     HomeKit value into the HM value when a plain scale factor is not enough
     (e.g. thermostat mode → setpoint).
+
+    ``invert`` (read direction only) negates a boolean datapoint.  Needed for
+    contacts: Homematic ``STATE`` is 0=CLOSED/1=OPEN, but the accessory's
+    ``contact_detected`` flag means "closed", so the value must be flipped.
     """
 
     kwarg: str
     scale: float = 1.0
     via: str | None = None
+    invert: bool = False
 
 
 READ_DATAPOINTS: dict[HKType, dict[str, DP]] = {
@@ -38,7 +43,7 @@ READ_DATAPOINTS: dict[HKType, dict[str, DP]] = {
     },
     HKType.SWITCH:      {"STATE": DP("on")},
     HKType.OUTLET:      {"STATE": DP("on")},
-    HKType.CONTACT:     {"STATE": DP("contact_detected")},
+    HKType.CONTACT:     {"STATE": DP("contact_detected", invert=True)},
     HKType.MOTION:      {"MOTION": DP("motion_detected")},
     HKType.TEMPERATURE: {"ACTUAL_TEMPERATURE": DP("temperature")},
     HKType.HUMIDITY:    {"HUMIDITY": DP("humidity")},
@@ -65,4 +70,7 @@ def read_update(hk_type: HKType, key: str, value: int | float | bool) -> dict | 
     dp = READ_DATAPOINTS.get(hk_type, {}).get(key)
     if dp is None:
         return None
+    if dp.invert:
+        # Boolean negation — HM STATE 0=CLOSED maps to contact_detected=True.
+        return {dp.kwarg: not value}
     return {dp.kwarg: value * dp.scale if dp.scale != 1.0 else value}

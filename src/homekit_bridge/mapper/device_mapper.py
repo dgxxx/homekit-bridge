@@ -24,6 +24,8 @@ from homekit_bridge.models import Channel, HKType, PVData
 _HM_RULES: list[tuple[str, HKType]] = [
     # Contact sensors — must come before SHUTTER to catch SHUTTER_CONTACT
     ("CONTACT",      HKType.CONTACT),
+    # HmIP-SRH window handle (CLOSED/TILTED/OPEN) — expose as a contact sensor
+    ("ROTARY_HANDLE", HKType.CONTACT),
 
     # Covers / blinds
     ("BLIND",        HKType.COVER),
@@ -83,6 +85,7 @@ def auto_hk_type(hm_type: str) -> Optional[HKType]:
 _HM_DESCRIPTIONS: list[tuple[str, str]] = [
     # Shutter family — disambiguate actuator vs status vs contact before SHUTTER.
     ("SHUTTER_CONTACT",          "Tür-/Fensterkontakt – offen/geschlossen (nur lesbar)"),
+    ("ROTARY_HANDLE",            "Fenstergriff-Sensor – zu/gekippt/offen, gekippt = offen (nur lesbar)"),
     ("SHUTTER_VIRTUAL_RECEIVER", "Rollladen-/Jalousie-Aktor – Position lesen + fahren (steuerbar)"),
     ("SHUTTER_TRANSMITTER",      "Rollladen-Position – Statuskanal (nur lesbar)"),
     ("BLIND",                    "Rollladen-/Jalousie-Aktor – Position lesen + fahren (steuerbar)"),
