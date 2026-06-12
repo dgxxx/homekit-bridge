@@ -827,3 +827,184 @@ input, select {
 .log-line--CRITICAL .log-line__level { color: #e05656; }
 .log-line--INFO .log-line__level { color: #5aa9e0; }
 .log-line--DEBUG .log-line__level { color: #7f8694; }
+
+/* ---------------------------------------------------------
+   Control page (HomeKit-exported devices, live + steuerbar)
+   --------------------------------------------------------- */
+.control__hint {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 1.25rem;
+}
+
+.ctrl-room { margin-bottom: 1.75rem; }
+
+.ctrl-room__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ctrl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.9rem;
+}
+
+.ctrl-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1rem;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.ctrl-card--ro { opacity: 0.92; }
+
+.ctrl-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ctrl-card__icon { font-size: 1.1rem; }
+
+.ctrl-card__name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctrl-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Toggle row */
+.ctrl-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+.ctrl-toggle__label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+/* Slider */
+.ctrl-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ctrl-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.ctrl-slider__val {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  min-width: 3.2rem;
+  text-align: right;
+}
+
+/* Quick buttons / mode buttons */
+.ctrl-quick,
+.ctrl-modes {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.ctrl-quick button,
+.ctrl-modes button,
+.ctrl-stepper button {
+  flex: 1;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.ctrl-quick button:hover,
+.ctrl-modes button:hover,
+.ctrl-stepper button:hover {
+  background: var(--color-border);
+}
+
+.ctrl-modes button.is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+/* Thermostat stepper */
+.ctrl-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ctrl-stepper button {
+  flex: 0 0 2.2rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.ctrl-stepper__val {
+  flex: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ctrl-readout {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.ctrl-readout--big {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Read-only status pill */
+.ctrl-pill {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  align-self: flex-start;
+}
+
+.ctrl-pill--ok {
+  background: rgba(62, 207, 142, 0.15);
+  color: var(--color-success);
+}
+
+.ctrl-pill--warn {
+  background: rgba(245, 166, 35, 0.15);
+  color: var(--color-warning);
+}

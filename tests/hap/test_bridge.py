@@ -93,6 +93,50 @@ def test_ccu3_state_event_updates_accessory(driver, store, bus, ccu3):
     assert char.value is True
 
 
+def test_control_snapshot_reports_state(driver, store, bus, ccu3):
+    store.set_mapping("SW:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+
+    bus.publish("ccu3.state", {"address": "SW:1", "key": "STATE", "value": True})
+
+    snap = bridge.control_snapshot()
+    assert len(snap) == 1
+    assert snap[0]["address"] == "SW:1"
+    assert snap[0]["hk_type"] == "switch"
+    assert snap[0]["state"] == {"on": True}
+
+
+def test_apply_control_routes_through_setter(driver, store, bus, ccu3):
+    store.set_mapping("SW:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+
+    assert bridge.apply_control("SW:1", "on", True) is True
+    assert ("SW:1", "STATE", True) in ccu3.set_calls
+
+    # Unknown field, unknown address, and read-only accessory all return False.
+    assert bridge.apply_control("SW:1", "position", 50) is False
+    assert bridge.apply_control("NOPE:1", "on", True) is False
+
+
+def test_apply_control_cover_scales_position(driver, store, bus, ccu3):
+    store.set_mapping("BL:4", exported=True, hk_type=HKType.COVER, name="Rollo")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+
+    assert bridge.apply_control("BL:4", "position", 30) is True
+    # COVER write scale is 100 → HomeKit 30 % becomes HM LEVEL 0.30
+    assert ccu3.set_calls[-1] == ("BL:4", "LEVEL", 0.3)
+
+
+def test_apply_control_rejects_readonly_contact(driver, store, bus, ccu3):
+    store.set_mapping("DC:1", exported=True, hk_type=HKType.CONTACT, name="Tür")
+    bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)
+    bridge.build()
+    assert bridge.apply_control("DC:1", "open", False) is False
+
+
 def test_homekit_set_calls_ccu3_adapter(driver, store, bus, ccu3):
     store.set_mapping("OEQ1:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
 

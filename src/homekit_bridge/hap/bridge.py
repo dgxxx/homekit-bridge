@@ -222,6 +222,79 @@ class HomeKitBridge:
             self._driver.config_changed()
 
     # ------------------------------------------------------------------
+    # Web control surface (read current state / push commands)
+    # ------------------------------------------------------------------
+
+    def control_snapshot(self) -> list[dict]:
+        """Current state of every exported accessory, for the web control page.
+
+        Each entry: ``{address, name, room, hk_type, state}`` where ``state`` is
+        the accessory's own HomeKit-facing values (via ``display_state``).
+        """
+        disc = self._discovery_index()
+        out: list[dict] = []
+        for address, mapping in list(self._exported.items()):
+            acc = self._addr_index.get(address)
+            if acc is None:
+                continue
+            hk = mapping.get("hk_type")
+            hk_value = hk.value if hasattr(hk, "value") else hk
+            room, ccu_name = disc.get(address, ("", ""))
+            name = mapping.get("name") or ccu_name or address
+            state: dict = {}
+            getter = getattr(acc, "display_state", None)
+            if getter is not None:
+                try:
+                    state = getter()
+                except Exception:
+                    logger.exception("display_state failed for %s", address)
+            out.append({
+                "address": address,
+                "name": name,
+                "room": room,
+                "hk_type": hk_value,
+                "state": state,
+            })
+        return out
+
+    def apply_control(self, address: str, field: str, value: Any) -> bool:
+        """Drive an accessory exactly as a HomeKit write would.
+
+        Invokes the writable characteristic's ``setter_callback``, so all of the
+        existing conversions (scale, thermostat mode → CONTROL_MODE, …) are
+        reused.  Returns False if the address/field is unknown or read-only.
+        """
+        acc = self._addr_index.get(address)
+        if acc is None:
+            return False
+        getter = getattr(acc, "writable_characteristics", None)
+        if getter is None:
+            return False
+        char = getter().get(field)
+        if char is None:
+            return False
+        cb = getattr(char, "setter_callback", None)
+        if cb is None:
+            return False
+        try:
+            cb(value)
+        except Exception:
+            logger.exception("apply_control failed for %s/%s", address, field)
+            return False
+        return True
+
+    def _discovery_index(self) -> dict[str, tuple[str, str]]:
+        """address → (room, ccu3_name) from the source's discovery, best-effort."""
+        idx: dict[str, tuple[str, str]] = {}
+        try:
+            for dev in self._ccu3.list_devices():
+                for ch in dev.channels:
+                    idx[ch.address] = (ch.room, ch.name)
+        except Exception:
+            logger.warning("list_devices() failed during control snapshot")
+        return idx
+
+    # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
 

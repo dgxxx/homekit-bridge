@@ -54,6 +54,9 @@ const state = {
   /** @type {Set<string>} room names whose device table group is collapsed */
   collapsedRooms: new Set(),
 
+  /** @type {Array<{address:string, name:string, room:string, hk_type:string, state:object}>} */
+  controls: [],
+
   /** @type {null|{pin:string, uri:string, paired:boolean}} */
   pairing: null,
 
@@ -105,6 +108,24 @@ async function saveDevice(address, payload) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+}
+
+async function fetchControl() {
+  return apiFetch("/api/control");
+}
+
+/**
+ * Send a single control command for an exported accessory.
+ * @param {string} address
+ * @param {string} field
+ * @param {boolean|number} value
+ */
+async function sendControl(address, field, value) {
+  return apiFetch(`/api/control/${encodeURIComponent(address)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ field, value }),
   });
 }
 
@@ -162,6 +183,7 @@ function switchView(viewId) {
 
   if (viewId === "pairing") fetchPairing();
   if (viewId === "logs") fetchLogs();
+  if (viewId === "control") refreshControl();
 }
 
 /* =================================================================
@@ -740,6 +762,214 @@ function renderLogs() {
 }
 
 /* =================================================================
+   7b. Control page (HomeKit-exported devices, live + steuerbar)
+   ================================================================= */
+
+/** Suppress poll-driven re-renders briefly after a command so optimistic
+ *  values aren't yanked back before the device reports its new state. */
+let controlSuppressUntil = 0;
+
+/** HK types that are display-only (no controls rendered). */
+const CONTROL_READONLY = new Set(["contact", "temperature", "humidity", "motion"]);
+
+/** Small per-type glyph for the card header. */
+const CONTROL_ICONS = {
+  switch: "&#x1F50C;", outlet: "&#x1F50C;", lightbulb: "&#x1F4A1;",
+  cover: "&#x1FA9F;", thermostat: "&#x1F321;&#xFE0F;", contact: "&#x1F6AA;",
+  temperature: "&#x1F321;&#xFE0F;", humidity: "&#x1F4A7;", motion: "&#x1F3C3;",
+};
+
+async function refreshControl() {
+  const container = document.getElementById("control-groups");
+  try {
+    const data = await fetchControl();
+    state.controls = data.devices || [];
+  } catch (_) {
+    if (container) {
+      container.innerHTML =
+        '<div class="state-message">Steuerung nicht verfuegbar.</div>';
+    }
+    return;
+  }
+  renderControl();
+}
+
+function renderControl() {
+  const container = document.getElementById("control-groups");
+  if (!container) return;
+
+  if (state.controls.length === 0) {
+    container.innerHTML =
+      '<div class="state-message">Keine an HomeKit freigegebenen Geraete.</div>';
+    return;
+  }
+
+  const groups = groupByRoom(state.controls);
+  container.innerHTML = groups.map(([room, items]) => `
+    <section class="ctrl-room">
+      <h2 class="ctrl-room__title">${escHtml(room)}
+        <span class="room-group__count">(${items.length})</span></h2>
+      <div class="ctrl-grid">
+        ${items.map(buildControlCard).join("")}
+      </div>
+    </section>`).join("");
+}
+
+/** Build one device card (header + type-specific body). */
+function buildControlCard(device) {
+  const { address, name, hk_type } = device;
+  const st = device.state || {};
+  const safeAddr = escHtml(address);
+  const icon = CONTROL_ICONS[hk_type] || "&#x2699;&#xFE0F;";
+  const readonly = CONTROL_READONLY.has(hk_type);
+  return `
+    <div class="ctrl-card${readonly ? " ctrl-card--ro" : ""}" data-address="${safeAddr}">
+      <div class="ctrl-card__head">
+        <span class="ctrl-card__icon" aria-hidden="true">${icon}</span>
+        <span class="ctrl-card__name">${escHtml(name)}</span>
+      </div>
+      <div class="ctrl-card__body">${buildControlBody(hk_type, st)}</div>
+    </div>`;
+}
+
+function buildControlBody(hk, st) {
+  switch (hk) {
+    case "switch":
+    case "outlet":
+      return toggleWidget("on", !!st.on);
+    case "lightbulb":
+      return toggleWidget("on", !!st.on) + sliderWidget("brightness", st.brightness ?? 0, "%");
+    case "cover":
+      return sliderWidget("position", st.position ?? 0, "%") + `
+        <div class="ctrl-quick">
+          <button type="button" data-field="position" data-value="100">Auf</button>
+          <button type="button" data-field="position" data-value="0">Zu</button>
+        </div>`;
+    case "thermostat":
+      return thermostatWidget(st);
+    case "contact":
+      return pill(st.open ? "Offen" : "Geschlossen", st.open ? "warn" : "ok");
+    case "motion":
+      return pill(st.motion ? "Bewegung" : "Ruhe", st.motion ? "warn" : "ok");
+    case "temperature":
+      return `<div class="ctrl-readout ctrl-readout--big">${fmtNum(st.temperature, 1)} &deg;C</div>`;
+    case "humidity":
+      return `<div class="ctrl-readout ctrl-readout--big">${fmtNum(st.humidity, 0)} %</div>`;
+    default:
+      return "";
+  }
+}
+
+function toggleWidget(field, on) {
+  return `
+    <label class="ctrl-toggle">
+      <input type="checkbox" class="toggle" data-field="${field}" ${on ? "checked" : ""} />
+      <span class="ctrl-toggle__label">${on ? "An" : "Aus"}</span>
+    </label>`;
+}
+
+function sliderWidget(field, value, unit) {
+  return `
+    <div class="ctrl-slider">
+      <input type="range" min="0" max="100" step="1" value="${Number(value)}"
+             data-field="${field}" aria-label="${field}" />
+      <span class="ctrl-slider__val" data-val-for="${field}">${Number(value)} ${unit}</span>
+    </div>`;
+}
+
+function thermostatWidget(st) {
+  const mode = Number(st.mode ?? 0);
+  const modes = [[0, "Aus"], [1, "Heizen"], [3, "Auto"]];
+  const buttons = modes.map(([v, label]) =>
+    `<button type="button" data-field="mode" data-value="${v}"` +
+    `${mode === v ? ' class="is-active"' : ""}>${label}</button>`).join("");
+  return `
+    <div class="ctrl-modes">${buttons}</div>
+    <div class="ctrl-stepper">
+      <button type="button" data-step="-0.5" aria-label="Kaelter">&minus;</button>
+      <span class="ctrl-stepper__val" data-target-temp>${fmtNum(st.target_temp, 1)} &deg;C</span>
+      <button type="button" data-step="0.5" aria-label="Waermer">+</button>
+    </div>
+    <div class="ctrl-readout">Ist: ${fmtNum(st.current_temp, 1)} &deg;C &middot; ${fmtNum(st.humidity, 0)} %</div>`;
+}
+
+function pill(text, mod) {
+  return `<span class="ctrl-pill ctrl-pill--${mod}">${escHtml(text)}</span>`;
+}
+
+function fmtNum(v, digits) {
+  return Number(v ?? 0).toFixed(digits);
+}
+
+/** Find a control entry + mutate its state optimistically, then re-render. */
+function optimisticSet(address, field, value) {
+  const dev = state.controls.find(d => d.address === address);
+  if (dev) {
+    dev.state = { ...dev.state, [field]: value };
+    renderControl();
+  }
+}
+
+/** Dispatch a command; optimistic UI first, revert on error. */
+async function dispatchControl(address, field, value) {
+  controlSuppressUntil = Date.now() + 2_500;
+  optimisticSet(address, field, value);
+  try {
+    await sendControl(address, field, value);
+  } catch (err) {
+    showToast(`Steuerung fehlgeschlagen: ${err.message}`, "error");
+    refreshControl();
+  }
+}
+
+/** One-time delegated listeners on the persistent control container. */
+function initControl() {
+  const container = document.getElementById("control-groups");
+  if (!container) return;
+
+  // Buttons: mode / cover-quick (data-field + data-value), thermostat stepper (data-step)
+  container.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const card = btn.closest(".ctrl-card");
+    if (!card) return;
+    const address = card.dataset.address;
+
+    if (btn.dataset.field && btn.dataset.value !== undefined) {
+      dispatchControl(address, btn.dataset.field, Number(btn.dataset.value));
+    } else if (btn.dataset.step) {
+      const valEl = card.querySelector("[data-target-temp]");
+      const cur = valEl ? parseFloat(valEl.textContent) : 0;
+      let next = cur + parseFloat(btn.dataset.step);
+      next = Math.min(30.5, Math.max(10, Math.round(next * 2) / 2));
+      dispatchControl(address, "target_temp", next);
+    }
+  });
+
+  // Checkboxes (toggle) + slider release
+  container.addEventListener("change", (e) => {
+    const el = e.target;
+    const card = el.closest(".ctrl-card");
+    if (!card || !el.dataset.field) return;
+    const address = card.dataset.address;
+    if (el.type === "checkbox") {
+      dispatchControl(address, el.dataset.field, el.checked);
+    } else if (el.type === "range") {
+      dispatchControl(address, el.dataset.field, Number(el.value));
+    }
+  });
+
+  // Live slider label while dragging (also keeps poll from clobbering the drag)
+  container.addEventListener("input", (e) => {
+    const el = e.target;
+    if (el.type !== "range" || !el.dataset.field) return;
+    controlSuppressUntil = Date.now() + 2_500;
+    const label = el.parentElement.querySelector(`[data-val-for="${el.dataset.field}"]`);
+    if (label) label.textContent = `${el.value} ${el.dataset.field === "brightness" || el.dataset.field === "position" ? "%" : ""}`;
+  });
+}
+
+/* =================================================================
    8. Polling / lifecycle
    ================================================================= */
 
@@ -777,6 +1007,9 @@ async function poll() {
     }
     if (state.activeView === "pairing") {
       fetchPairing();
+    }
+    if (state.activeView === "control" && Date.now() > controlSuppressUntil) {
+      refreshControl();
     }
 
     setPollIndicator(true);
@@ -856,6 +1089,7 @@ function formatPower(w) {
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   initDeviceSearch();
+  initControl();
   startPolling();
 
   const logLevelEl = document.getElementById("log-level");

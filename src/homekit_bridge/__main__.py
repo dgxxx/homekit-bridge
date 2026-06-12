@@ -227,6 +227,7 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
         settings=settings,
         bus=bus,
         log_buffer=log_buffer,
+        hap_bridge=hk_bridge,
     )
 
     return AppComponents(

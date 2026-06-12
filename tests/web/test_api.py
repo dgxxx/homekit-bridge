@@ -45,6 +45,22 @@ class FakeBridgeState:
         self.solaredge_connected = True
 
 
+class FakeHapBridge:
+    def __init__(self):
+        self.calls = []
+        self.snapshot = [
+            {"address": "SW:1", "name": "Lamp", "room": "Bad",
+             "hk_type": "switch", "state": {"on": False}},
+        ]
+
+    def control_snapshot(self):
+        return self.snapshot
+
+    def apply_control(self, address, field, value):
+        self.calls.append((address, field, value))
+        return address == "SW:1" and field == "on"
+
+
 # ---------------------------------------------------------------------------
 # Settings fixture helpers
 # ---------------------------------------------------------------------------
@@ -462,3 +478,58 @@ async def test_post_device_publishes_config_changed(app, store, bus):
         )
     assert r.status_code == 200
     assert received == [{"address": "OEQ7:1"}]
+
+
+# ---------------------------------------------------------------------------
+# /api/control
+# ---------------------------------------------------------------------------
+
+def _control_app(store, ccu3, solar, bridge_state, hap_bridge):
+    return create_app(
+        config_store=store,
+        ccu3_adapter=ccu3,
+        solar_state=solar,
+        bridge_state=bridge_state,
+        settings=_make_settings(),
+        bus=EventBus(),
+        log_buffer=RingBufferLogHandler(),
+        hap_bridge=hap_bridge,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_control_returns_snapshot(store, ccu3, solar, bridge_state):
+    app = _control_app(store, ccu3, solar, bridge_state, FakeHapBridge())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/control")
+    assert r.status_code == 200
+    devices = r.json()["devices"]
+    assert devices[0]["address"] == "SW:1"
+    assert devices[0]["state"] == {"on": False}
+
+
+@pytest.mark.asyncio
+async def test_post_control_dispatches_command(store, ccu3, solar, bridge_state):
+    fake = FakeHapBridge()
+    app = _control_app(store, ccu3, solar, bridge_state, fake)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/control/SW:1", json={"field": "on", "value": True})
+    assert r.status_code == 200
+    assert fake.calls == [("SW:1", "on", True)]
+
+
+@pytest.mark.asyncio
+async def test_post_control_not_controllable_returns_400(store, ccu3, solar, bridge_state):
+    app = _control_app(store, ccu3, solar, bridge_state, FakeHapBridge())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/control/RO:1", json={"field": "open", "value": False})
+    assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_get_control_without_bridge_is_empty(app):
+    # The default app fixture wires no hap_bridge → endpoint degrades gracefully.
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/control")
+    assert r.status_code == 200
+    assert r.json() == {"devices": []}

@@ -45,6 +45,9 @@ class SwitchAccessory(Accessory):
     def writable_characteristics(self) -> dict:
         return {"on": self._char_on}
 
+    def display_state(self) -> dict:
+        return {"on": bool(self._char_on.value)}
+
 
 class OutletAccessory(Accessory):
     """Outlet (smart plug)."""
@@ -71,6 +74,9 @@ class OutletAccessory(Accessory):
     def writable_characteristics(self) -> dict:
         return {"on": self._char_on}
 
+    def display_state(self) -> dict:
+        return {"on": bool(self._char_on.value)}
+
 
 class LightbulbAccessory(Accessory):
     """Dimmable lightbulb (On + Brightness)."""
@@ -95,6 +101,12 @@ class LightbulbAccessory(Accessory):
 
     def writable_characteristics(self) -> dict:
         return {"on": self._char_on, "brightness": self._char_brightness}
+
+    def display_state(self) -> dict:
+        return {
+            "on": bool(self._char_on.value),
+            "brightness": int(self._char_brightness.value or 0),
+        }
 
 
 class CoverAccessory(Accessory):
@@ -130,6 +142,9 @@ class CoverAccessory(Accessory):
 
     def writable_characteristics(self) -> dict:
         return {"position": self._char_target}
+
+    def display_state(self) -> dict:
+        return {"position": int(self._char_current.value or 0)}
 
 
 class ThermostatAccessory(Accessory):
@@ -236,6 +251,15 @@ class ThermostatAccessory(Accessory):
     def writable_characteristics(self) -> dict:
         return {"target_temp": self._char_target, "mode": self._char_hc_target}
 
+    def display_state(self) -> dict:
+        # mode: HomeKit TargetHeatingCoolingState (0=Off, 1=Heat, 3=Auto)
+        return {
+            "current_temp": float(self._char_current.value or 0.0),
+            "target_temp": float(self._char_target.value or 0.0),
+            "humidity": float(self._char_humidity.value or 0.0),
+            "mode": int(self._char_hc_target.value or 0),
+        }
+
 
 class ContactSensorAccessory(Accessory):
     """Contact sensor (door/window)."""
@@ -251,6 +275,10 @@ class ContactSensorAccessory(Accessory):
         # ContactSensorState: 0 = contact detected (closed), 1 = not detected (open)
         self._char_state.set_value(0 if contact_detected else 1)
 
+    def display_state(self) -> dict:
+        # ContactSensorState: 0 = closed, 1 = open
+        return {"open": bool(self._char_state.value)}
+
 
 class TemperatureSensorAccessory(Accessory):
     """Temperature sensor (read-only)."""
@@ -264,6 +292,9 @@ class TemperatureSensorAccessory(Accessory):
 
     def update_state(self, temperature: float) -> None:
         self._char_temp.set_value(temperature)
+
+    def display_state(self) -> dict:
+        return {"temperature": float(self._char_temp.value or 0.0)}
 
 
 class HumiditySensorAccessory(Accessory):
@@ -279,6 +310,9 @@ class HumiditySensorAccessory(Accessory):
     def update_state(self, humidity: float) -> None:
         self._char_humidity.set_value(humidity)
 
+    def display_state(self) -> dict:
+        return {"humidity": float(self._char_humidity.value or 0.0)}
+
 
 class MotionSensorAccessory(Accessory):
     """Motion sensor (read-only)."""
@@ -292,6 +326,9 @@ class MotionSensorAccessory(Accessory):
 
     def update_state(self, motion_detected: bool) -> None:
         self._char_motion.set_value(motion_detected)
+
+    def display_state(self) -> dict:
+        return {"motion": bool(self._char_motion.value)}
 
 
 # ---------------------------------------------------------------------------

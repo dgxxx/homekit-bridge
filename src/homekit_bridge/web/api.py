@@ -54,6 +54,12 @@ class DeviceMappingIn(BaseModel):
     name: str
 
 
+class ControlIn(BaseModel):
+    """A single control command: set *field* of an exported accessory to *value*."""
+    field: str
+    value: bool | int | float
+
+
 class DeviceMappingOut(BaseModel):
     address: str
     type: str = ""                   # raw Homematic channel type (e.g. "SWITCH")
@@ -119,6 +125,7 @@ def create_app(
     settings: Settings,
     bus: EventBus,
     log_buffer: Any,
+    hap_bridge: Any = None,
 ) -> FastAPI:
     """Return the configured FastAPI application."""
 
@@ -163,6 +170,25 @@ def create_app(
             name=body.name,
         )
         bus.publish("config.changed", {"address": address})
+        return {"status": "ok", "address": address}
+
+    # ------------------------------------------------------------------
+    # /api/control — live state + control of HomeKit-exported accessories
+    # ------------------------------------------------------------------
+
+    @app.get("/api/control", dependencies=api_deps)
+    async def get_control() -> dict:
+        if hap_bridge is None:
+            return {"devices": []}
+        return {"devices": hap_bridge.control_snapshot()}
+
+    @app.post("/api/control/{address}", dependencies=api_deps)
+    async def post_control(address: str, body: ControlIn) -> dict:
+        if hap_bridge is None or not hap_bridge.apply_control(address, body.field, body.value):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Not controllable: {address}/{body.field}",
+            )
         return {"status": "ok", "address": address}
 
     # ------------------------------------------------------------------

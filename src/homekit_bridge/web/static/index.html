@@ -40,6 +40,15 @@
         class="nav__tab"
         role="tab"
         aria-selected="false"
+        aria-controls="view-control"
+        id="tab-control"
+        data-view="control"
+      >Steuerung</button>
+
+      <button
+        class="nav__tab"
+        role="tab"
+        aria-selected="false"
         aria-controls="view-solar"
         id="tab-solar"
         data-view="solar"
@@ -154,6 +163,25 @@
             </tr>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- ----- View: Steuerung ----- -->
+    <section
+      class="view"
+      id="view-control"
+      role="tabpanel"
+      aria-labelledby="tab-control"
+    >
+      <h1 class="devices__heading">Steuerung</h1>
+      <p class="control__hint">
+        An HomeKit freigegebene Ger&auml;te &mdash; live anzeigen und steuern.
+      </p>
+      <div id="control-groups" aria-live="polite">
+        <div class="state-message">
+          <span class="spinner" aria-hidden="true"></span>
+          Lade Ger&auml;te&#8230;
+        </div>
       </div>
     </section>
 
