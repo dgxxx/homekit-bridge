@@ -172,6 +172,21 @@ def test_solaredge_event_updates_pv_accessories(driver, store, bus, ccu3):
     assert char.value is True
 
 
+def test_pv_disabled_builds_no_pv_accessories(driver, store, bus, ccu3):
+    """With pv_enabled=False the PV accessory group is empty and PV events no-op."""
+    bridge = HomeKitBridge(
+        driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus, pv_enabled=False
+    )
+    bridge.build()
+
+    assert bridge.pv_accessories == {}
+
+    # A solar event must not raise and must not create any accessory.
+    pv = PVData(power_w=2000.0, energy_today_kwh=10.0, battery_pct=80, producing=True)
+    bus.publish("solaredge.data", pv)
+    assert bridge.pv_accessories == {}
+
+
 def test_bridge_is_single_bridge_accessory(driver, store, bus, ccu3):
     """All accessories live under a single HAP Bridge (one pairing)."""
     bridge = HomeKitBridge(driver=driver, config_store=store, ccu3_adapter=ccu3, bus=bus)

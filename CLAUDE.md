@@ -113,6 +113,7 @@ ruff check src tests
 | `HOMEKIT_MAC` | nein | random | Feste Bridge-Identität (`XX:XX:XX:XX:XX:XX`). Siehe unten. |
 | `WEB_HOST` | nein | `0.0.0.0` | Bind-Adresse der Web-UI |
 | `WEB_PORT` | nein | `8095` | Port der Web-UI |
+| `PV_ENABLED` | nein | `false` | PV/Solar-Accessories in HomeKit erzeugen. Standard aus — siehe unten. |
 
 Secrets **nie** in SQLite oder Code — nur Env-Vars.
 
@@ -126,6 +127,15 @@ Bridge-Identität fest: bei vorhandener `hap.state` wird der dort gespeicherte W
 **gleiche** Identität neu entsteht → kein Re-Pairing nötig. Beide werden als Konstruktor-
 Argument an den `AccessoryDriver` durchgereicht (`__main__.py`). Sind sie leer/ungesetzt,
 würfelt pyhap wie bisher zufällige Werte.
+
+**`PV_ENABLED` — PV-Accessories aus/an:** HomeKit kennt **keine** native Watt-/kWh-
+Charakteristik, die die Standard-Home-App anzeigt. Die vier PV-Accessories
+(LightSensor mit Watt als „Lux", Eve-Power als getarnter Switch, Battery, Producing)
+wirken dort verwirrend, und `energy_today_kwh` ist ohnehin immer `0` (s. u.). Deshalb
+ist `PV_ENABLED` **standardmäßig aus** — die Bridge baut dann keine PV-Accessories und
+ignoriert `solaredge.data`-Events (PV-Daten bleiben in der Web-UI sichtbar). Truthy-Werte:
+`1`, `true`, `yes`, `on`. Der Schalter wird in `__main__.py` aus `settings.pv_enabled` an
+`HomeKitBridge(pv_enabled=…)` durchgereicht.
 
 ---
 

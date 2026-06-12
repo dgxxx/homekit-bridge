@@ -42,11 +42,13 @@ class HomeKitBridge:
         config_store: ConfigStore,
         ccu3_adapter: Any,
         bus: EventBus,
+        pv_enabled: bool = True,
     ) -> None:
         self._driver = driver
         self._store = config_store
         self._ccu3 = ccu3_adapter
         self._bus = bus
+        self._pv_enabled = pv_enabled
 
         self.hap_bridge: Optional[HAPBridge] = None
         # address -> accessory, for fast lookup on incoming events
@@ -150,6 +152,10 @@ class HomeKitBridge:
             self._exported[address] = mapping
 
     def _build_pv_accessories(self) -> None:
+        if not self._pv_enabled:
+            # PV/solar accessories disabled (default): HomeKit has no native
+            # watt/kWh characteristic, so they render confusingly. Skip entirely.
+            return
         drv = self._driver
         self.pv_accessories = {
             "light_sensor": LightSensorAccessory(drv, "PV Power (lux)"),
@@ -313,6 +319,8 @@ class HomeKitBridge:
             logger.exception("update_state failed for %s", address)
 
     def _on_solaredge_data(self, pv: PVData) -> None:
+        if not self.pv_accessories:
+            return  # PV accessories disabled — nothing to update
         try:
             self.pv_accessories["light_sensor"].update_state(lux=pv.power_w)
             self.pv_accessories["eve_power"].update_state(watts=pv.power_w, kwh=pv.energy_today_kwh)

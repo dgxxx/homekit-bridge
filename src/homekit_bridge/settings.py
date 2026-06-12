@@ -19,6 +19,9 @@ class Settings:
     # even if hap.state is lost. Both None => pyhap generates random values.
     homekit_pin: Optional[str] = None
     homekit_mac: Optional[str] = None
+    # PV/solar accessories are off by default: HomeKit has no native watt/kWh
+    # characteristic, so the stock Home app shows them in a confusing way.
+    pv_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -34,6 +37,10 @@ class Settings:
                 f"HOMEKIT_PIN must look like 123-45-678, got {homekit_pin!r}"
             )
 
+        pv_enabled = os.environ.get("PV_ENABLED", "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+
         return cls(
             mqtt_host=os.environ.get("MQTT_HOST", "127.0.0.1"),
             mqtt_port=mqtt_port,
@@ -41,4 +48,5 @@ class Settings:
             state_dir=os.environ.get("STATE_DIR", "./state"),
             homekit_pin=homekit_pin,
             homekit_mac=os.environ.get("HOMEKIT_MAC") or None,
+            pv_enabled=pv_enabled,
         )

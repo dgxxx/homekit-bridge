@@ -213,6 +213,7 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
         config_store=config_store,
         ccu3_adapter=ccu3_adapter,
         bus=bus,
+        pv_enabled=settings.pv_enabled,
     )
     hk_bridge.build()
 

@@ -4,7 +4,10 @@ from homekit_bridge.settings import Settings
 
 
 def test_defaults(monkeypatch):
-    for v in ("MQTT_HOST", "MQTT_PORT", "WEB_PASSWORD", "HOMEKIT_PIN", "HOMEKIT_MAC"):
+    for v in (
+        "MQTT_HOST", "MQTT_PORT", "WEB_PASSWORD", "HOMEKIT_PIN", "HOMEKIT_MAC",
+        "PV_ENABLED",
+    ):
         monkeypatch.delenv(v, raising=False)
     s = Settings.from_env()
     assert s.mqtt_host == "127.0.0.1"
@@ -14,6 +17,20 @@ def test_defaults(monkeypatch):
     # No fixed pairing identity by default — pyhap generates a random PIN/MAC.
     assert s.homekit_pin is None
     assert s.homekit_mac is None
+    # PV accessories are off by default — the HomeKit representation is unclear.
+    assert s.pv_enabled is False
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("true", True), ("True", True), ("1", True), ("yes", True), ("on", True),
+        ("false", False), ("0", False), ("no", False), ("off", False), ("", False),
+    ],
+)
+def test_pv_enabled_parsing(monkeypatch, raw, expected):
+    monkeypatch.setenv("PV_ENABLED", raw)
+    assert Settings.from_env().pv_enabled is expected
 
 
 def test_overrides(monkeypatch):
