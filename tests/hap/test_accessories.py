@@ -14,6 +14,8 @@ from homekit_bridge.hap.accessories import (
     CoverAccessory,
     ThermostatAccessory,
     ContactSensorAccessory,
+    WindowAccessory,
+    DoorAccessory,
     TemperatureSensorAccessory,
     HumiditySensorAccessory,
     MotionSensorAccessory,
@@ -103,6 +105,46 @@ def test_contact_sensor_not_detected(driver):
     acc.update_state(contact_detected=False)
     char = acc.get_service("ContactSensor").get_characteristic("ContactSensorState")
     assert char.value == 1
+
+
+# ---------------------------------------------------------------------------
+# Window / Door (position-based contact, shown as a room tile)
+# ---------------------------------------------------------------------------
+
+def test_window_open_sets_full_position(driver):
+    acc = WindowAccessory(driver, "TestWindow")
+    acc.update_state(open=True)
+    svc = acc.get_service("Window")
+    assert svc.get_characteristic("CurrentPosition").value == 100
+    assert svc.get_characteristic("TargetPosition").value == 100
+    assert svc.get_characteristic("PositionState").value == 2  # stopped
+    assert acc.display_state() == {"open": True}
+
+
+def test_window_closed_sets_zero_position(driver):
+    acc = WindowAccessory(driver, "TestWindow2")
+    acc.update_state(open=False)
+    svc = acc.get_service("Window")
+    assert svc.get_characteristic("CurrentPosition").value == 0
+    assert svc.get_characteristic("TargetPosition").value == 0
+    assert acc.display_state() == {"open": False}
+
+
+def test_door_open_sets_full_position(driver):
+    acc = DoorAccessory(driver, "TestDoor")
+    acc.update_state(open=True)
+    svc = acc.get_service("Door")
+    assert svc.get_characteristic("CurrentPosition").value == 100
+    assert acc.display_state() == {"open": True}
+
+
+def test_window_and_door_are_read_only(driver):
+    # Read-only: no writable characteristics wired, so HomeKit writes never
+    # reach the device (the next state event re-syncs the position).
+    win = WindowAccessory(driver, "TestWindowRO")
+    door = DoorAccessory(driver, "TestDoorRO")
+    assert getattr(win, "writable_characteristics", None) is None
+    assert getattr(door, "writable_characteristics", None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +246,16 @@ def test_make_accessory_builds_contact_without_on_set(driver):
     from homekit_bridge.hap.accessories import ContactSensorAccessory
     acc = make_accessory(driver=driver, hk_type="contact", name="Door")
     assert isinstance(acc, ContactSensorAccessory)
+
+
+def test_make_accessory_builds_window(driver):
+    acc = make_accessory(driver=driver, hk_type="window", name="Kitchen Window")
+    assert isinstance(acc, WindowAccessory)
+
+
+def test_make_accessory_builds_door(driver):
+    acc = make_accessory(driver=driver, hk_type="door", name="Front Door")
+    assert isinstance(acc, DoorAccessory)
 
 
 def test_make_accessory_builds_switch(driver):

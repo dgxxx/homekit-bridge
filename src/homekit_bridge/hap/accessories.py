@@ -280,6 +280,52 @@ class ContactSensorAccessory(Accessory):
         return {"open": bool(self._char_state.value)}
 
 
+class _PositionContactAccessory(Accessory):
+    """Read-only door/window contact shown as a position-based HomeKit tile.
+
+    Unlike ``ContactSensorAccessory`` (a plain sensor that Apple Home tucks into
+    the status row), a Door/Window service renders as a full room tile with an
+    open/closed icon — matching the old CCU3 plugin's presentation.  HomeKit
+    treats Door/Window as motorized (position 0=closed..100=open), so it may
+    show a control affordance; we intentionally wire **no** writable
+    characteristic, so writes never reach the device and the next state event
+    re-syncs the position.  Subclasses set ``_SERVICE`` and ``category``.
+    """
+
+    _SERVICE = ""  # "Door" or "Window"
+
+    def __init__(self, driver: AccessoryDriver, name: str) -> None:
+        super().__init__(driver, name)
+        svc = self.add_preload_service(self._SERVICE)
+        self._char_current = svc.get_characteristic("CurrentPosition")
+        self._char_target = svc.get_characteristic("TargetPosition")
+        self._char_state = svc.get_characteristic("PositionState")
+        self._char_state.set_value(2)  # 2 = stopped
+
+    def update_state(self, open: bool) -> None:
+        # Position: 0 = fully closed, 100 = fully open.
+        pos = 100 if open else 0
+        self._char_current.set_value(pos)
+        self._char_target.set_value(pos)
+
+    def display_state(self) -> dict:
+        return {"open": bool(self._char_current.value)}
+
+
+class WindowAccessory(_PositionContactAccessory):
+    """Window contact rendered as a position tile (read-only)."""
+
+    category = 13  # HAP category: Window
+    _SERVICE = "Window"
+
+
+class DoorAccessory(_PositionContactAccessory):
+    """Door contact rendered as a position tile (read-only)."""
+
+    category = 12  # HAP category: Door
+    _SERVICE = "Door"
+
+
 class TemperatureSensorAccessory(Accessory):
     """Temperature sensor (read-only)."""
 
@@ -423,6 +469,8 @@ _FACTORY_MAP: dict[str, type] = {
     "cover": CoverAccessory,
     "thermostat": ThermostatAccessory,
     "contact": ContactSensorAccessory,
+    "window": WindowAccessory,
+    "door": DoorAccessory,
     "temperature": TemperatureSensorAccessory,
     "humidity": HumiditySensorAccessory,
     "motion": MotionSensorAccessory,

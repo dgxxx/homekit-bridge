@@ -37,6 +37,23 @@ def test_contact_read_rotary_handle_tilted_counts_as_open():
     assert read_update(HKType.CONTACT, "STATE", 1) == {"contact_detected": False}  # tilted
 
 
+def test_window_read_maps_state_to_open():
+    # WINDOW/DOOR expose the same HM contact channel as a position-based tile.
+    # HM STATE: 0 = CLOSED, 1 = OPEN -> open = bool(STATE), no inversion.
+    assert read_update(HKType.WINDOW, "STATE", 1) == {"open": True}   # open
+    assert read_update(HKType.WINDOW, "STATE", 0) == {"open": False}  # closed
+
+
+def test_door_read_maps_state_to_open():
+    assert read_update(HKType.DOOR, "STATE", 1) == {"open": True}
+    assert read_update(HKType.DOOR, "STATE", 0) == {"open": False}
+
+
+def test_window_and_door_are_read_only():
+    assert HKType.WINDOW not in WRITE_DATAPOINTS
+    assert HKType.DOOR not in WRITE_DATAPOINTS
+
+
 def test_cover_level_is_scaled_to_percent():
     assert read_update(HKType.COVER, "LEVEL", 0.5) == {"position": 50.0}
 

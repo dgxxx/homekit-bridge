@@ -26,12 +26,17 @@ class DP:
     ``invert`` (read direction only) negates a boolean datapoint.  Needed for
     contacts: Homematic ``STATE`` is 0=CLOSED/1=OPEN, but the accessory's
     ``contact_detected`` flag means "closed", so the value must be flipped.
+
+    ``to_bool`` (read direction only) coerces the raw value to a plain ``bool``
+    (any truthy STATE -> True).  Used by WINDOW/DOOR so a window-handle's
+    "tilted" state (STATE 2) also reports open.
     """
 
     kwarg: str
     scale: float = 1.0
     via: str | None = None
     invert: bool = False
+    to_bool: bool = False
 
 
 READ_DATAPOINTS: dict[HKType, dict[str, DP]] = {
@@ -44,6 +49,10 @@ READ_DATAPOINTS: dict[HKType, dict[str, DP]] = {
     HKType.SWITCH:      {"STATE": DP("on")},
     HKType.OUTLET:      {"STATE": DP("on")},
     HKType.CONTACT:     {"STATE": DP("contact_detected", invert=True)},
+    # WINDOW/DOOR present the same contact channel as a position tile.
+    # HM STATE 0=CLOSED/1=OPEN maps directly to ``open`` (truthy STATE == open).
+    HKType.WINDOW:      {"STATE": DP("open", to_bool=True)},
+    HKType.DOOR:        {"STATE": DP("open", to_bool=True)},
     HKType.MOTION:      {"MOTION": DP("motion_detected")},
     HKType.TEMPERATURE: {"ACTUAL_TEMPERATURE": DP("temperature")},
     HKType.HUMIDITY:    {"HUMIDITY": DP("humidity")},
@@ -73,4 +82,6 @@ def read_update(hk_type: HKType, key: str, value: int | float | bool) -> dict | 
     if dp.invert:
         # Boolean negation — HM STATE 0=CLOSED maps to contact_detected=True.
         return {dp.kwarg: not value}
+    if dp.to_bool:
+        return {dp.kwarg: bool(value)}
     return {dp.kwarg: value * dp.scale if dp.scale != 1.0 else value}

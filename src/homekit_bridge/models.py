@@ -10,6 +10,8 @@ class HKType(str, Enum):
     COVER = "cover"
     THERMOSTAT = "thermostat"
     CONTACT = "contact"
+    WINDOW = "window"
+    DOOR = "door"
     TEMPERATURE = "temperature"
     HUMIDITY = "humidity"
     MOTION = "motion"

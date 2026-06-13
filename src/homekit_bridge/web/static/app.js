@@ -29,6 +29,8 @@ const HK_TYPES = [
   { value: "cover",       label: "Cover" },
   { value: "thermostat",  label: "Thermostat" },
   { value: "contact",     label: "Contact" },
+  { value: "window",      label: "Window (Kachel)" },
+  { value: "door",        label: "Door (Kachel)" },
   { value: "temperature", label: "Temperature" },
   { value: "humidity",    label: "Humidity" },
   { value: "motion",      label: "Motion" },
@@ -770,12 +772,14 @@ function renderLogs() {
 let controlSuppressUntil = 0;
 
 /** HK types that are display-only (no controls rendered). */
-const CONTROL_READONLY = new Set(["contact", "temperature", "humidity", "motion"]);
+const CONTROL_READONLY = new Set(
+  ["contact", "window", "door", "temperature", "humidity", "motion"]);
 
 /** Small per-type glyph for the card header. */
 const CONTROL_ICONS = {
   switch: "&#x1F50C;", outlet: "&#x1F50C;", lightbulb: "&#x1F4A1;",
   cover: "&#x1FA9F;", thermostat: "&#x1F321;&#xFE0F;", contact: "&#x1F6AA;",
+  window: "&#x1FA9F;", door: "&#x1F6AA;",
   temperature: "&#x1F321;&#xFE0F;", humidity: "&#x1F4A7;", motion: "&#x1F3C3;",
 };
 
@@ -848,6 +852,8 @@ function buildControlBody(hk, st) {
     case "thermostat":
       return thermostatWidget(st);
     case "contact":
+    case "window":
+    case "door":
       return pill(st.open ? "Offen" : "Geschlossen", st.open ? "warn" : "ok");
     case "motion":
       return pill(st.motion ? "Bewegung" : "Ruhe", st.motion ? "warn" : "ok");
