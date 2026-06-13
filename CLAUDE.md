@@ -50,6 +50,17 @@ Geräte-Pipeline: `MqttSource` reicht sie als Pseudo-Kanäle (Raum „System-Var
 + Export, und Reconcile baut daraus ein normales Accessory. Read-only-Typen
 (Contact/Motion) sind ebenfalls wählbar. Kein neuer UI-/HAP-Code nötig.
 
+**Tür-/Fensterkontakte — Darstellung in Apple Home:** Ein Kontakt kann als HK-Typ
+`contact`, `window` oder `door` exportiert werden (pro Kanal in der Web-UI wählbar).
+`contact` (`ContactSensor`) ist semantisch korrekt (reiner Sensor), erscheint in Apple
+Home aber nur in der Status-Zeile, **nicht** als eigene Raum-Kachel. `window`/`door`
+nutzen den positionsbasierten `Window`-/`Door`-Service → vollwertige Raum-Kachel (wie das
+alte CCU3-Plugin). Mapping: HM `STATE` → `open` (truthy = offen; „gekippt"=2 zählt als
+offen), Position 0=zu / 100=offen. Beide sind **read-only** (keine
+`writable_characteristics`) — HomeKit zeigt zwar die Optik einer motorisierten Position,
+Schreibzugriffe erreichen das Gerät aber nicht und werden vom nächsten State-Event
+re-synct.
+
 **Bekannte Einschränkung:** `solaredge/state` enthält kein Tagesenergie-Feld →
 `PVData.energy_today_kwh = 0.0`. Das PV-Energie-Accessory zeigt 0 kWh. Falls benötigt,
 muss der `solaredge`-Dienst ein Energie-Feld publishen.
