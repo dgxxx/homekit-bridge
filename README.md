@@ -1,25 +1,51 @@
 # HomeKit Bridge
 
-A Dockerized Python service that exposes Homematic CCU3 devices and SolarEdge PV live data as HomeKit accessories, configurable via a web UI.
+🇬🇧 English · [🇩🇪 Deutsch](README.de.md)
 
-## What it does
+A Dockerized Python service that exposes **Homematic CCU3** devices (read + switch) and
+**SolarEdge PV** live data (read-only) as native HomeKit accessories — configurable through
+a small Vanilla-JS web UI. It replaces the HomeKit add-on of the CCU3.
 
-- Reads and controls Homematic CCU3 devices (switches, dimmers, blinds, sensors, thermostats) over XML-RPC
-- Reads SolarEdge inverter live data (AC power, today's energy, battery SoC) over Modbus TCP
-- Exposes everything as HomeKit accessories via a single HAP bridge (one pairing)
-- Provides a web UI for mapping/naming devices and viewing status
+## Architecture
+
+The bridge is an **MQTT consumer**. It does *not* talk to the CCU3 or the inverter
+directly. Two separate source services publish device data to an MQTT broker, and the
+bridge subscribes to it:
+
+```
+  ccu3 service ─┐
+                ├─▶  MQTT broker (1883)  ◀──  homekit-bridge  ──▶  Apple Home
+  solaredge ────┘                                   │
+                                                     └──▶  Browser (config web UI)
+```
+
+Topics consumed (all retained):
+
+| Topic | Published by | Payload |
+|---|---|---|
+| `homematic/$discovery` | ccu3 | channel list incl. room |
+| `homematic/+/state` | ccu3 | per-channel state |
+| `homematic/$sysvar/+/state` | ccu3 | boolean CCU3 system variables `{"STATE": bool}` |
+| `solaredge/state` | solaredge | inverter live data |
+
+The bridge publishes back to `homematic/<addr>/set` (and `homematic/$sysvar/<name>/set`)
+to switch devices.
+
+> The `ccu3` and `solaredge` source services are **not** part of this repo. This repo
+> contains the bridge plus a ready-to-run Mosquitto broker (see
+> [README_mqtt.md](README_mqtt.md)).
 
 ## Requirements
 
-- Docker and Docker Compose on a Linux host
-- Homematic CCU3 reachable on the LAN with XML-RPC enabled (default port 2001)
-- SolarEdge inverter with Modbus TCP enabled on port 1502
-- The host must be on the same network as the CCU3 and SolarEdge
-- `network_mode: host` is required for HAP mDNS/Bonjour and for the CCU3 callback server
+- Docker + Docker Compose on a Linux host
+- An MQTT broker (bundled — see the compose stack below)
+- The `ccu3` / `solaredge` source services publishing to that broker (for live data)
+- `network_mode: host` — required so HomeKit's mDNS/Bonjour discovery reaches the LAN and
+  so the bridge can reach the broker at `127.0.0.1:1883`
 
 ## Setup
 
-1. **Clone / copy** the project to your server.
+1. **Clone** the repo onto your server.
 
 2. **Create your `.env`** from the example:
 
@@ -27,99 +53,142 @@ A Dockerized Python service that exposes Homematic CCU3 devices and SolarEdge PV
    cp .env.example .env
    ```
 
-   Fill in at minimum:
+   All values have sane defaults; for a local broker on the same host nothing *must* be
+   changed. Common overrides:
 
    ```
-   CCU3_HOST=192.168.1.10        # your CCU3 IP
-   SOLAREDGE_HOST=192.168.1.20   # your inverter IP
+   MQTT_HOST=127.0.0.1      # broker address (default)
+   MQTT_PORT=1883           # broker port (default)
+   WEB_PASSWORD=...          # optional HTTP-Basic password for the web UI
+   HOMEKIT_PIN=123-45-678    # optional fixed pairing code (see .env.example)
    ```
 
-3. **Start the service:**
+3. **Start the stack** (bridge + Mosquitto broker). The active compose file is
+   `homekit-bridge.yaml`; the bundled `make` targets wrap it:
 
    ```bash
-   docker compose up -d
+   make start          # = docker compose -f homekit-bridge.yaml up -d
+   make buildstart     # rebuild the image, then start
+   make logs           # follow the bridge logs
+   make restart
+   make stop
    ```
 
-   On first start Docker builds the image and creates the `./state/` directory for persistent data.
-
-4. **Open the web UI** at `http://<server-ip>:8095`
-
-## HomeKit Pairing
-
-1. After startup, look for the pairing PIN in the container logs:
+   Or call Compose directly:
 
    ```bash
-   docker compose logs homekit-bridge | grep "pairing PIN"
+   docker compose -f homekit-bridge.yaml up -d
    ```
 
-2. On your iPhone/iPad, open **Home** → **+** → **Add Accessory** → **More options** and scan the QR code (if shown) or enter the PIN manually.
+   On first start the image is built and `./state/` (SQLite DB + HAP pairing) and
+   `./data/` (broker persistence) are created.
 
-3. Once paired, all exported devices appear as HomeKit accessories.
+4. **Open the web UI** at `http://<server-ip>:8095`.
+
+## HomeKit pairing
+
+1. Find the setup code in the logs:
+
+   ```bash
+   make logs            # or: docker compose -f homekit-bridge.yaml logs homekit-bridge
+   ```
+
+   Without `HOMEKIT_PIN` the code is **regenerated on every restart** (pyhap does not
+   persist it). Set `HOMEKIT_PIN` in `.env` to keep it stable — see `.env.example`.
+
+2. On your iPhone/iPad: **Home → + → Add Accessory → More options**, then scan the QR code
+   (shown in the web UI / logs) or enter the PIN manually.
+
+3. Once paired, every exported device appears as a HomeKit accessory under the single
+   bridge — no per-device pairing.
 
 ## Mapping devices in the web UI
 
-1. Go to the **Geräte** tab.
-2. Devices discovered from the CCU3 are listed.
-3. Toggle **Export** to expose a device to HomeKit.
-4. Set the **HomeKit type** (Switch, Lightbulb, Cover, etc.) — auto-detected from the CCU3 channel type if left blank.
-5. Set a **Name** as it should appear in the Home app.
-6. Click **Save**.
+1. Open the **Geräte** tab — all channels discovered from MQTT are listed, grouped by room.
+2. Toggle **Export** to expose a channel to HomeKit.
+3. Pick the **HomeKit type** (Switch, Lightbulb, Cover, Contact/Window/Door, …). A sensible
+   default is pre-selected from the CCU3 channel type.
+4. Set the **Name** shown in the Home app.
+5. **Save** — accessories are reconciled live; no restart needed.
 
-Changes take effect after restarting the service (so the HAP bridge re-registers the accessories).
+A few type notes:
 
-## Host network requirement
+- **Window/door contacts:** export as `contact` (sensor — appears only in the status row),
+  or as `window`/`door` for a full room tile (positional service, read-only).
+- **CCU3 system variables** (boolean sysvars released by the `ccu3` service) show up under
+  the room *"System-Variablen"* and can be exported as Switch (default) or a read-only
+  sensor type.
+- **PV/solar accessories** are **off by default** (`PV_ENABLED=false`) — HomeKit has no
+  native watt/kWh characteristic, so the stock Home app renders them confusingly. PV data
+  is always visible in the web UI regardless.
 
-`network_mode: host` is mandatory because:
+## Configuration backup / restore
 
-- **HAP/mDNS**: HomeKit discovery relies on multicast DNS (Bonjour). Bridge networking prevents mDNS from reaching the LAN.
-- **CCU3 callback**: The CCU3 pushes state changes to the callback server by connecting back to the container. With bridge networking the container IP is not reachable from the CCU3.
+The full config (device mappings + HomeKit accessory IDs) can be backed up and restored as
+JSON:
+
+- **Automatic:** one daily snapshot into `STATE_DIR/backups`, rotated (`BACKUP_ENABLED`,
+  `BACKUP_RETENTION` — see `.env.example`).
+- **Manual:** web UI tab **"Sicherung"** — download a backup, restore an upload, or load an
+  auto-backup. The HomeKit accessory IDs are included, so a restore reproduces the same
+  accessory DB **without re-pairing**.
 
 ## Persistent state
 
-Everything in `./state/` is persistent:
-
-| File | Contents |
+| Path | Contents |
 |---|---|
-| `state/mappings.db` | SQLite: device → HomeKit type / name / export flag |
-| `state/hap.state` | HAP pairing keys (deleting this breaks the pairing) |
+| `state/mappings.db` | SQLite: device → HomeKit type / name / export flag + accessory IDs |
+| `state/hap.state` | HAP pairing keys — **deleting this breaks the pairing** |
+| `state/backups/` | rotated daily config snapshots |
+| `data/` | Mosquitto broker persistence |
 
-Back up `./state/` to avoid losing pairings.
+Back up `./state/` to avoid losing pairings. (All four paths are gitignored.)
+
+## Environment variables
+
+See [.env.example](.env.example) for the full, commented list. Summary:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MQTT_HOST` | `127.0.0.1` | broker host |
+| `MQTT_PORT` | `1883` | broker port |
+| `WEB_PASSWORD` | — | optional web-UI password (HTTP Basic) |
+| `STATE_DIR` | `./state` (`/app/state` in Docker) | persistent data dir |
+| `HOMEKIT_PIN` | random | fixed setup code `ddd-dd-ddd` |
+| `HOMEKIT_MAC` | random | fixed bridge identity `XX:XX:XX:XX:XX:XX` |
+| `WEB_HOST` / `WEB_PORT` | `0.0.0.0` / `8095` | web UI bind |
+| `PV_ENABLED` | `false` | build SolarEdge PV accessories |
+| `BACKUP_ENABLED` | `true` | automatic daily config backup |
+| `BACKUP_RETENTION` | `14` | daily snapshots to keep |
+
+Secrets live in `.env` only — never in the SQLite DB or in code.
+
+## Development
+
+```bash
+pip install -e '.[dev]'       # deps incl. dev tools
+pytest -q                     # run the test suite
+ruff check --fix src tests    # lint (must be clean before committing)
+```
+
+See `CLAUDE.md` for architecture details and conventions.
 
 ## Troubleshooting
 
-### CCU3 devices not appearing
-
-- Verify the CCU3 XML-RPC interface is enabled: CCU3 web UI → Settings → Interfaces.
-- Check `CCU3_HOST` in `.env`.
-- The callback server listens on port 9292; ensure nothing else uses that port.
-
-### CCU3 stops pushing updates after a CCU3 restart
-
-The CCU3 loses callback registrations on restart. The bridge will automatically re-register (exponential backoff, up to 64 s). Watch the logs:
+**No devices in the web UI** — devices come from MQTT, not the CCU3 directly. Check that
+the broker is up (`make logs` shows `mqtt`) and that the `ccu3` service is publishing to
+`homematic/$discovery`. Subscribe to verify:
 
 ```bash
-docker compose logs -f homekit-bridge | grep ccu3
+docker exec -it mqtt mosquitto_sub -t 'homematic/#' -v
 ```
 
-If it stays stuck, restart the bridge:
+**HomeKit "No Response"** — the HAP driver and host must be on the same LAN as your Apple
+devices. Confirm host networking: `docker inspect homekit-bridge | grep NetworkMode`
+should show `host`. Ensure UDP 51826 isn't firewalled.
 
-```bash
-docker compose restart homekit-bridge
-```
+**Web UI not reachable** — default port is 8095 (`WEB_PORT`); the service binds `0.0.0.0`
+(`WEB_HOST`) by default.
 
-### SolarEdge not showing data
-
-- Verify Modbus TCP is enabled on the inverter: inverter display → Communication → RS485 / Modbus.
-- Default port is 1502, unit ID 1. Adjust `SOLAREDGE_UNIT_ID` in `.env` if needed.
-- The register map was written for SunSpec-compliant SE-series inverters. Check logs for "SolarEdge read failed" and note the register address for model-specific adjustments.
-
-### HomeKit "No Response"
-
-- The HAP driver must be running and the host must be on the same network as your Apple devices.
-- Check that port 51826/UDP is not blocked by a local firewall.
-- Verify that `network_mode: host` is active: `docker inspect homekit-bridge | grep NetworkMode`.
-
-### Web UI not reachable
-
-- Default port is 8095. Override with `WEB_PORT=<port>` in `.env`.
-- The service binds to `0.0.0.0` by default; set `WEB_HOST` in `.env` to restrict.
+**PV accessory shows 0 kWh** — `solaredge/state` carries no daily-energy field, so
+`energy_today_kwh` is always 0. The source service would need to publish an energy field.

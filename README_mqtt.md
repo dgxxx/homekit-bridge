@@ -1,30 +1,47 @@
 # MQTT Broker
 
-Mosquitto 2.x MQTT broker for the home-automation data services.
+🇬🇧 English · [🇩🇪 Deutsch](README_mqtt.de.md)
+
+Mosquitto 2.x broker for the home-automation data services. It ships as the `mqtt` service
+inside this project's compose stack (`homekit-bridge.yaml`), alongside the bridge itself.
 
 ## Details
 
 - **Port**: 1883
-- **Auth**: Anonymous (no credentials required on the internal network)
-- **Persistence**: Enabled; data stored in `data/` (gitignored)
+- **Auth**: anonymous (no credentials — intended for the internal LAN only)
+- **Persistence**: enabled; data stored in `data/` (gitignored)
+- **Config**: `config/mosquitto.conf`
 
 ## Usage
 
+The broker starts together with the bridge:
+
 ```sh
-docker compose --file mqtt.yaml --project-name mqtt up -d
+make start                                  # or:
+docker compose -f homekit-bridge.yaml up -d
 ```
 
-## Topic convention
+Inspect live traffic:
 
-Topics follow the design spec pattern:
-
-```
-<source>/<device-or-sensor>/<measurement>
+```sh
+docker exec -it mqtt mosquitto_sub -t '#' -v
 ```
 
-Examples:
-- `solaredge/inverter/power_w`
-- `shelly/plug-kitchen/energy_kwh`
-- `gaszaehler/main/volume_m3`
+## Topics
 
-All automation poller services publish to this broker; consumers subscribe to the relevant topics.
+The bridge subscribes to these retained topics (published by the external `ccu3` and
+`solaredge` source services — not part of this repo):
+
+| Topic | Description |
+|---|---|
+| `homematic/$discovery` | channel list incl. room |
+| `homematic/+/state` | per-channel state |
+| `homematic/$sysvar/+/state` | boolean CCU3 system variables `{"STATE": bool}` |
+| `solaredge/state` | inverter live data |
+
+The bridge publishes commands back to:
+
+| Topic | Description |
+|---|---|
+| `homematic/<addr>/set` | switch a device channel |
+| `homematic/$sysvar/<name>/set` | toggle a CCU3 system variable |
