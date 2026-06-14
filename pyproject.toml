@@ -1,11 +1,14 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "homekit-bridge"
 version = "0.1.0"
 requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Oliver Merz", email = "olli@oliver-merz.de" }]
 dependencies = [
     "HAP-python[QRCode]>=4.9",
     "paho-mqtt>=2.0",

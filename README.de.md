@@ -195,3 +195,9 @@ standardmäßig an `0.0.0.0` (`WEB_HOST`).
 
 **PV-Accessory zeigt 0 kWh** — `solaredge/state` enthält kein Tagesenergie-Feld, daher ist
 `energy_today_kwh` immer 0. Der Quell-Dienst müsste ein Energie-Feld publishen.
+
+## Lizenz
+
+Dieses Projekt steht unter der **GNU General Public License v3.0 oder später**
+(GPL-3.0-or-later). Den vollständigen Lizenztext findest du in der Datei
+[LICENSE](LICENSE).
