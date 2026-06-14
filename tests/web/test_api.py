@@ -533,3 +533,92 @@ async def test_get_control_without_bridge_is_empty(app):
         r = await c.get("/api/control")
     assert r.status_code == 200
     assert r.json() == {"devices": []}
+
+
+# ---------------------------------------------------------------------------
+# /api/config — backup / restore
+# ---------------------------------------------------------------------------
+
+def _backup_app(store, solar, bridge_state, bus, backup_dir=None):
+    return create_app(
+        config_store=store,
+        ccu3_adapter=FakeCcu3Adapter(),
+        solar_state=solar,
+        bridge_state=bridge_state,
+        settings=_make_settings(),
+        bus=bus,
+        log_buffer=RingBufferLogHandler(),
+        backup_dir=backup_dir,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_config_backup_downloads_json(store, solar, bridge_state, bus):
+    store.set_mapping("A:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    app = _backup_app(store, solar, bridge_state, bus)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/config/backup")
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+    assert r.json() == store.export_config()
+
+
+@pytest.mark.asyncio
+async def test_post_config_restore_applies_and_publishes(store, solar, bridge_state, bus):
+    received = []
+    bus.subscribe("config.changed", lambda e: received.append(e))
+    app = _backup_app(store, solar, bridge_state, bus)
+    payload = {
+        "version": 1,
+        "mappings": [{"address": "Z:1", "exported": True,
+                      "hk_type": "outlet", "name": "Restored"}],
+        "aids": [{"address": "Z:1", "aid": 4}],
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/config/restore", json=payload)
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok", "imported": 1}
+    assert store.get_mapping("Z:1")["hk_type"] == HKType.OUTLET
+    assert received == [{"restored": True}]
+
+
+@pytest.mark.asyncio
+async def test_post_config_restore_invalid_returns_422(store, solar, bridge_state, bus):
+    app = _backup_app(store, solar, bridge_state, bus)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/config/restore", json={"nonsense": True})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_config_backups_lists_files(store, solar, bridge_state, bus, tmp_path):
+    from homekit_bridge.backup import write_backup_file
+    backup_dir = tmp_path / "backups"
+    write_backup_file(store, backup_dir)
+    app = _backup_app(store, solar, bridge_state, bus, backup_dir=backup_dir)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/config/backups")
+    assert r.status_code == 200
+    backups = r.json()["backups"]
+    assert len(backups) == 1
+    assert backups[0]["name"].startswith("config-")
+
+
+@pytest.mark.asyncio
+async def test_download_named_backup(store, solar, bridge_state, bus, tmp_path):
+    from homekit_bridge.backup import write_backup_file
+    backup_dir = tmp_path / "backups"
+    path = write_backup_file(store, backup_dir)
+    app = _backup_app(store, solar, bridge_state, bus, backup_dir=backup_dir)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/api/config/backups/{path.name}")
+    assert r.status_code == 200
+    assert r.json() == store.export_config()
+
+
+@pytest.mark.asyncio
+async def test_download_backup_rejects_path_traversal(store, solar, bridge_state, bus, tmp_path):
+    app = _backup_app(store, solar, bridge_state, bus, backup_dir=tmp_path)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/config/backups/..%2f..%2fetc%2fpasswd")
+    assert r.status_code in (400, 404)

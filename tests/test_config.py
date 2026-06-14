@@ -1,3 +1,5 @@
+import pytest
+
 from homekit_bridge.config import ConfigStore
 from homekit_bridge.models import HKType
 
@@ -84,3 +86,81 @@ def test_aid_persists_across_reopen(tmp_path):
     reopened = ConfigStore(db)
     assert reopened.get_or_create_aid("A:1") == aid_a
     assert reopened.get_or_create_aid("B:1") == aid_b
+
+
+# ---------------------------------------------------------------------------
+# Backup / restore — export_config + import_config
+# ---------------------------------------------------------------------------
+
+def test_export_config_contains_mappings_and_aids(tmp_path):
+    store = ConfigStore(tmp_path / "c.db")
+    store.set_mapping("A:1", exported=True, hk_type=HKType.SWITCH, name="Lamp")
+    store.set_mapping("B:1", exported=False, hk_type=None, name="Other")
+    store.get_or_create_aid("A:1")
+
+    data = store.export_config()
+    assert data["version"] == 1
+    addrs = {m["address"] for m in data["mappings"]}
+    assert addrs == {"A:1", "B:1"}
+    a = next(m for m in data["mappings"] if m["address"] == "A:1")
+    assert a == {"address": "A:1", "exported": True, "hk_type": "switch", "name": "Lamp"}
+    assert {"address": "A:1", "aid": 2} in data["aids"]
+
+
+def test_import_config_round_trip(tmp_path):
+    src = ConfigStore(tmp_path / "src.db")
+    src.set_mapping("A:1", exported=True, hk_type=HKType.COVER, name="Rollo")
+    src.set_mapping("B:1", exported=True, hk_type=HKType.SWITCH, name="Schalter")
+    src.get_or_create_aid("A:1")
+    src.get_or_create_aid("B:1")
+    snapshot = src.export_config()
+
+    dst = ConfigStore(tmp_path / "dst.db")
+    count = dst.import_config(snapshot)
+    assert count == 2
+    assert dst.export_config() == snapshot
+    assert dst.get_or_create_aid("A:1") == src.get_or_create_aid("A:1")
+
+
+def test_import_config_replaces_existing_mappings(tmp_path):
+    store = ConfigStore(tmp_path / "c.db")
+    store.set_mapping("OLD:1", exported=True, hk_type=HKType.SWITCH, name="Old")
+    store.import_config(
+        {"mappings": [{"address": "NEW:1", "exported": True,
+                       "hk_type": "switch", "name": "New"}]}
+    )
+    assert store.get_mapping("OLD:1") is None
+    assert store.get_mapping("NEW:1") is not None
+
+
+def test_import_config_without_aids_keeps_existing_aids(tmp_path):
+    store = ConfigStore(tmp_path / "c.db")
+    aid = store.get_or_create_aid("A:1")
+    store.import_config({"mappings": []})  # no "aids" key
+    assert store.get_or_create_aid("A:1") == aid
+
+
+def test_import_config_rejects_invalid_payload(tmp_path):
+    store = ConfigStore(tmp_path / "c.db")
+    with pytest.raises(ValueError):
+        store.import_config({"nope": True})
+    with pytest.raises(ValueError):
+        store.import_config({"mappings": [{"name": "no address"}]})
+
+
+def test_import_config_atomic_on_db_error(tmp_path):
+    store = ConfigStore(tmp_path / "c.db")
+    store.set_mapping("KEEP:1", exported=True, hk_type=HKType.SWITCH, name="Keep")
+    # Two aids sharing the same id violate the UNIQUE constraint mid-transaction,
+    # after the mappings were already wiped → must roll back, not corrupt the DB.
+    with pytest.raises(Exception):
+        store.import_config(
+            {
+                "mappings": [{"address": "X:1", "exported": True,
+                              "hk_type": "switch", "name": "X"}],
+                "aids": [{"address": "X:1", "aid": 5},
+                         {"address": "Y:1", "aid": 5}],
+            }
+        )
+    # The pre-existing mapping must survive a failed restore.
+    assert store.get_mapping("KEEP:1") is not None

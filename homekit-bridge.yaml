@@ -14,3 +14,13 @@ services:
       - .env
     environment:
       STATE_DIR: /app/state
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: mqtt
+    restart: always
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./data/:/mosquitto/data/
+

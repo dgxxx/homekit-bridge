@@ -50,6 +50,11 @@ def _serialize_hk_type(hk_type: Optional[HKType]) -> Optional[str]:
     return hk_type.value
 
 
+# Version tag written into every backup payload so a future format change can
+# be detected on restore.
+BACKUP_VERSION = 1
+
+
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "address": row["address"],
@@ -137,3 +142,96 @@ class ConfigStore:
                 "SELECT * FROM mappings ORDER BY address"
             ).fetchall()
         return [_row_to_dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Backup / restore
+    # ------------------------------------------------------------------
+
+    def export_config(self) -> dict[str, Any]:
+        """Serialize the full configuration to a JSON-friendly dict.
+
+        Includes every mapping (exported or not) and the persistent AID table,
+        so a restore reproduces the exact same HomeKit accessory database without
+        forcing a re-pairing. ``hk_type`` is kept as the raw stored string (not
+        the ``HKType`` enum) so unknown/stale values round-trip untouched.
+        """
+        with self._lock:
+            mapping_rows = self._conn.execute(
+                "SELECT address, exported, hk_type, name FROM mappings ORDER BY address"
+            ).fetchall()
+            aid_rows = self._conn.execute(
+                "SELECT address, aid FROM aids ORDER BY aid"
+            ).fetchall()
+        return {
+            "version": BACKUP_VERSION,
+            "mappings": [
+                {
+                    "address": r["address"],
+                    "exported": bool(r["exported"]),
+                    "hk_type": r["hk_type"],
+                    "name": r["name"],
+                }
+                for r in mapping_rows
+            ],
+            "aids": [
+                {"address": r["address"], "aid": r["aid"]} for r in aid_rows
+            ],
+        }
+
+    def import_config(self, data: Any) -> int:
+        """Replace the configuration from an :func:`export_config` payload.
+
+        Wipes and re-fills the ``mappings`` table. The ``aids`` table is only
+        replaced when the payload carries an ``"aids"`` key (older backups
+        without it leave the existing AID allocation untouched). Returns the
+        number of mappings imported. Raises ``ValueError`` on a structurally
+        invalid payload; the change is atomic (rolled back on any error).
+        """
+        if not isinstance(data, dict):
+            raise ValueError("backup must be a JSON object")
+
+        raw_mappings = data.get("mappings")
+        if not isinstance(raw_mappings, list):
+            raise ValueError("backup is missing a 'mappings' list")
+
+        mapping_rows: list[tuple[str, int, Optional[str], str]] = []
+        for m in raw_mappings:
+            if not isinstance(m, dict) or "address" not in m:
+                raise ValueError("each mapping needs an 'address'")
+            hk_type = m.get("hk_type")
+            if hk_type is not None and not isinstance(hk_type, str):
+                raise ValueError("'hk_type' must be a string or null")
+            mapping_rows.append(
+                (
+                    str(m["address"]),
+                    int(bool(m.get("exported", False))),
+                    hk_type,
+                    str(m.get("name", "")),
+                )
+            )
+
+        replace_aids = "aids" in data
+        aid_rows: list[tuple[str, int]] = []
+        if replace_aids:
+            raw_aids = data.get("aids") or []
+            if not isinstance(raw_aids, list):
+                raise ValueError("'aids' must be a list")
+            for a in raw_aids:
+                if not isinstance(a, dict) or "address" not in a or "aid" not in a:
+                    raise ValueError("each aid entry needs 'address' and 'aid'")
+                aid_rows.append((str(a["address"]), int(a["aid"])))
+
+        with self._lock:
+            try:
+                self._conn.execute("DELETE FROM mappings")
+                self._conn.executemany(_UPSERT, mapping_rows)
+                if replace_aids:
+                    self._conn.execute("DELETE FROM aids")
+                    self._conn.executemany(
+                        "INSERT INTO aids (address, aid) VALUES (?, ?)", aid_rows
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+        return len(mapping_rows)

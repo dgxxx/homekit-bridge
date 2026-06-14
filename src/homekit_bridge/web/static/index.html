@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HomeKit Bridge</title>
-  <link rel="stylesheet" href="/styles.css?v=2" />
+  <link rel="stylesheet" href="/styles.css?v=3" />
 </head>
 <body>
 
@@ -71,6 +71,15 @@
         id="tab-logs"
         data-view="logs"
       >Logs</button>
+
+      <button
+        class="nav__tab"
+        role="tab"
+        aria-selected="false"
+        aria-controls="view-backup"
+        id="tab-backup"
+        data-view="backup"
+      >Sicherung</button>
     </div>
 
     <div class="nav__status" aria-live="polite" id="nav-status">
@@ -270,6 +279,51 @@
       </div>
     </section>
 
+    <!-- ----- View: Sicherung (Backup/Restore) ----- -->
+    <section
+      class="view"
+      id="view-backup"
+      role="tabpanel"
+      aria-labelledby="tab-backup"
+    >
+      <h1 class="backup__heading">Sicherung &amp; Wiederherstellung</h1>
+
+      <div class="backup__cards">
+        <section class="backup-card" aria-label="Backup erstellen">
+          <h2 class="backup-card__title">Backup herunterladen</h2>
+          <p class="backup-card__hint">
+            Speichert die komplette Konfiguration (Ger&auml;te-Zuordnungen,
+            HomeKit-Typen, Namen und stabile Accessory-IDs) als JSON-Datei.
+          </p>
+          <a class="btn btn--primary" id="backup-download" href="/api/config/backup"
+             download>Konfiguration herunterladen</a>
+        </section>
+
+        <section class="backup-card" aria-label="Backup wiederherstellen">
+          <h2 class="backup-card__title">Backup wiederherstellen</h2>
+          <p class="backup-card__hint">
+            &Uuml;berschreibt die <strong>gesamte</strong> aktuelle Konfiguration
+            mit der hochgeladenen Datei. Die HomeKit-Accessories werden danach neu
+            aufgebaut.
+          </p>
+          <input class="backup-file" type="file" id="restore-file" accept=".json,application/json" />
+          <button class="btn" id="restore-btn" disabled>Wiederherstellen</button>
+          <span class="backup-state" id="restore-state" aria-live="polite"></span>
+        </section>
+      </div>
+
+      <section class="backup-card" aria-label="Automatische Backups">
+        <h2 class="backup-card__title">Automatische Backups</h2>
+        <p class="backup-card__hint">
+          Die Bridge legt automatisch einmal pro Tag ein Backup ab
+          (abschaltbar via <code>BACKUP_ENABLED=false</code>).
+        </p>
+        <div id="backup-list" aria-live="polite">
+          <div class="state-message">Lade Backups&#8230;</div>
+        </div>
+      </section>
+    </section>
+
   </main>
 
   <!-- ===================== Footer ===================== -->
@@ -286,6 +340,6 @@
 <!-- Toast region (outside app grid for fixed positioning) -->
 <div class="toast-region" id="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
 
-<script src="/app.js?v=2" defer></script>
+<script src="/app.js?v=3" defer></script>
 </body>
 </html>

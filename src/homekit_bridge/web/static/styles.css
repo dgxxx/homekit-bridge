@@ -1008,3 +1008,104 @@ input, select {
   background: rgba(245, 166, 35, 0.15);
   color: var(--color-warning);
 }
+
+/* ---------------------------------------------------------
+   9. Backup / restore view
+   --------------------------------------------------------- */
+.backup__heading {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+}
+
+.backup__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.backup-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-card);
+}
+
+.backup-card__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.backup-card__hint {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+/* Generic buttons (also used as <a> links) */
+.btn {
+  display: inline-block;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background var(--transition), opacity var(--transition);
+}
+
+.btn:hover { border-color: var(--color-primary); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+.btn--primary:hover { background: var(--color-primary-hover); }
+
+.btn--small { padding: 0.3rem 0.7rem; font-size: 0.78rem; }
+
+.backup-file {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  max-width: 100%;
+}
+
+.backup-state {
+  display: inline-block;
+  margin-left: 0.6rem;
+  font-size: 0.8rem;
+}
+.backup-state--saving { color: var(--color-text-muted); }
+.backup-state--ok     { color: var(--color-success); }
+.backup-state--error  { color: var(--color-danger); }
+
+.backup-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.backup-row:last-child { border-bottom: none; }
+
+.backup-row__name {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+}
+
+.backup-row__meta {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}

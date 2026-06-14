@@ -61,6 +61,17 @@ offen), Position 0=zu / 100=offen. Beide sind **read-only** (keine
 Schreibzugriffe erreichen das Gerät aber nicht und werden vom nächsten State-Event
 re-synct.
 
+**Konfig-Backup/Restore:** Die gesamte Konfiguration (Tabellen `mappings` +
+`aids` aus `mappings.db`) lässt sich als JSON sichern und wiederherstellen.
+`ConfigStore.export_config()`/`import_config()` sind die reinen Bausteine;
+`backup.py` schreibt daraus Tages-Snapshots (`config-YYYYMMDD-HHMMSS.json`) nach
+`STATE_DIR/backups` und rotiert sie (`BackupScheduler`, 1×/Tag, idempotent pro
+Kalendertag). Web-API: `GET /api/config/backup` (Download), `POST
+/api/config/restore` (Upload; löst `config.changed` → vollständigen Reconcile
+aus, baut alle Accessories neu), `GET /api/config/backups[/<name>]` (Auto-Backups
+listen/laden). UI: Tab „Sicherung". Die `aids` werden mitgesichert, damit ein
+Restore dieselbe HomeKit-Accessory-DB ohne erneutes Pairing reproduziert.
+
 **Bekannte Einschränkung:** `solaredge/state` enthält kein Tagesenergie-Feld →
 `PVData.energy_today_kwh = 0.0`. Das PV-Energie-Accessory zeigt 0 kWh. Falls benötigt,
 muss der `solaredge`-Dienst ein Energie-Feld publishen.
@@ -82,6 +93,7 @@ homekit-bridge/
 │   ├── events.py            # In-Process-Eventbus (thread-safe)
 │   ├── models.py            # Dataclasses: Device, Channel, HKMapping, PVData
 │   ├── mqttsource.py        # MqttSource: MQTT-Konsum + bus.publish
+│   ├── backup.py            # Konfig-Backup: export→JSON, Tages-Snapshots, Rotation
 │   ├── mapper/
 │   │   └── device_mapper.py # CCU3-Kanal → HK-Typ; PV → Accessory-Specs (rein, kein I/O)
 │   ├── hap/
@@ -125,6 +137,8 @@ ruff check src tests
 | `WEB_HOST` | nein | `0.0.0.0` | Bind-Adresse der Web-UI |
 | `WEB_PORT` | nein | `8095` | Port der Web-UI |
 | `PV_ENABLED` | nein | `false` | PV/Solar-Accessories in HomeKit erzeugen. Standard aus — siehe unten. |
+| `BACKUP_ENABLED` | nein | `true` | Automatisches Tages-Backup der Konfig nach `STATE_DIR/backups`. Falsy (`0`/`false`/`no`/`off`) = aus. |
+| `BACKUP_RETENTION` | nein | `14` | Anzahl der aufzubewahrenden Tages-Backups (ältere werden gelöscht). |
 
 Secrets **nie** in SQLite oder Code — nur Env-Vars.
 

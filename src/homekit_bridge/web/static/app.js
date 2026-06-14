@@ -186,6 +186,7 @@ function switchView(viewId) {
   if (viewId === "pairing") fetchPairing();
   if (viewId === "logs") fetchLogs();
   if (viewId === "control") refreshControl();
+  if (viewId === "backup") refreshBackups();
 }
 
 /* =================================================================
@@ -976,6 +977,109 @@ function initControl() {
 }
 
 /* =================================================================
+   7c. Backup / restore
+   ================================================================= */
+
+/** Fetch and render the list of automatic backup files. */
+async function refreshBackups() {
+  const list = document.getElementById("backup-list");
+  if (!list) return;
+  try {
+    const data = await apiFetch("/api/config/backups");
+    renderBackupList(data.backups || []);
+  } catch (err) {
+    list.innerHTML =
+      `<div class="state-message">Fehler beim Laden: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function renderBackupList(backups) {
+  const list = document.getElementById("backup-list");
+  if (!list) return;
+  if (backups.length === 0) {
+    list.innerHTML =
+      '<div class="state-message">Noch keine automatischen Backups vorhanden.</div>';
+    return;
+  }
+  list.innerHTML = backups.map((b) => {
+    const when = new Date(b.mtime * 1000).toLocaleString("de-DE");
+    const kb = (b.size / 1024).toFixed(1);
+    const href = "/api/config/backups/" + encodeURIComponent(b.name);
+    return `
+      <div class="backup-row">
+        <span class="backup-row__name">${escHtml(b.name)}</span>
+        <span class="backup-row__meta">${escHtml(when)} &middot; ${kb} KB</span>
+        <a class="btn btn--small" href="${href}" download>Download</a>
+      </div>`;
+  }).join("");
+}
+
+/** Read the selected file, POST it to /api/config/restore. */
+async function handleRestore() {
+  const fileInput = document.getElementById("restore-file");
+  const stateEl   = document.getElementById("restore-state");
+  const btn       = document.getElementById("restore-btn");
+  if (!fileInput || !btn) return;
+
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+
+  if (!confirm(
+    "Die gesamte aktuelle Konfiguration wird durch dieses Backup ersetzt. " +
+    "Fortfahren?")) {
+    return;
+  }
+
+  btn.disabled = true;
+  if (stateEl) {
+    stateEl.className = "backup-state backup-state--saving";
+    stateEl.textContent = "Stelle wieder her…";
+  }
+
+  try {
+    const text = await file.text();
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch (_) {
+      throw new Error("Datei ist kein gültiges JSON");
+    }
+    const res = await apiFetch("/api/config/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (stateEl) {
+      stateEl.className = "backup-state backup-state--ok";
+      stateEl.textContent = `OK – ${res.imported} Einträge wiederhergestellt.`;
+    }
+    showToast(`Konfiguration wiederhergestellt (${res.imported} Einträge).`, "ok");
+    // Reflect the restored config in the devices view on next visit.
+    state.devices = [];
+    refreshBackups();
+  } catch (err) {
+    if (stateEl) {
+      stateEl.className = "backup-state backup-state--error";
+      stateEl.textContent = "Fehler";
+    }
+    showToast(`Wiederherstellung fehlgeschlagen: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function initBackup() {
+  const fileInput = document.getElementById("restore-file");
+  const btn = document.getElementById("restore-btn");
+  if (fileInput && btn) {
+    fileInput.addEventListener("change", () => {
+      btn.disabled = !(fileInput.files && fileInput.files.length);
+    });
+    btn.addEventListener("click", handleRestore);
+  }
+}
+
+/* =================================================================
    8. Polling / lifecycle
    ================================================================= */
 
@@ -1096,6 +1200,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   initDeviceSearch();
   initControl();
+  initBackup();
   startPolling();
 
   const logLevelEl = document.getElementById("log-level");

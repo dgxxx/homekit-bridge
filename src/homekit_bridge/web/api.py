@@ -24,8 +24,10 @@ auth with any username and the configured password.  /health is always open.
 
 import base64
 import io
+import json
 import logging
 import pathlib
+from datetime import datetime
 from typing import Any, Optional
 
 import qrcode.image.svg
@@ -33,6 +35,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from homekit_bridge.backup import list_backups
 from homekit_bridge.config import ConfigStore
 from homekit_bridge.events import EventBus
 from homekit_bridge.mapper.device_mapper import auto_hk_type, describe_hm_type
@@ -126,6 +129,7 @@ def create_app(
     bus: EventBus,
     log_buffer: Any,
     hap_bridge: Any = None,
+    backup_dir: Any = None,
 ) -> FastAPI:
     """Return the configured FastAPI application."""
 
@@ -171,6 +175,63 @@ def create_app(
         )
         bus.publish("config.changed", {"address": address})
         return {"status": "ok", "address": address}
+
+    # ------------------------------------------------------------------
+    # /api/config — backup (download) + restore (upload)
+    # ------------------------------------------------------------------
+
+    @app.get("/api/config/backup", dependencies=api_deps)
+    async def get_config_backup() -> Response:
+        payload = json.dumps(config_store.export_config(), indent=2, ensure_ascii=False)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        filename = f"homekit-bridge-config-{stamp}.json"
+        return Response(
+            content=payload,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.post("/api/config/restore", dependencies=api_deps)
+    async def post_config_restore(body: dict) -> dict:
+        try:
+            imported = config_store.import_config(body)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid backup: {exc}",
+            )
+        # Full-set reconcile rebuilds every accessory from the restored config.
+        bus.publish("config.changed", {"restored": True})
+        return {"status": "ok", "imported": imported}
+
+    @app.get("/api/config/backups", dependencies=api_deps)
+    async def get_config_backups() -> dict:
+        if backup_dir is None:
+            return {"backups": []}
+        return {"backups": list_backups(backup_dir)}
+
+    @app.get("/api/config/backups/{name}", dependencies=api_deps)
+    async def download_config_backup(name: str) -> Response:
+        # Guard against path traversal: only plain config-*.json names allowed.
+        if (
+            backup_dir is None
+            or name != pathlib.Path(name).name
+            or not name.startswith("config-")
+            or not name.endswith(".json")
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid backup name"
+            )
+        path = pathlib.Path(backup_dir) / name
+        if not path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Backup not found"
+            )
+        return Response(
+            content=path.read_text(encoding="utf-8"),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
 
     # ------------------------------------------------------------------
     # /api/control — live state + control of HomeKit-exported accessories

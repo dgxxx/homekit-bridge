@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 from pyhap.accessory_driver import AccessoryDriver
 
+from homekit_bridge.backup import BackupScheduler
 from homekit_bridge.config import ConfigStore
 from homekit_bridge.events import EventBus
 from homekit_bridge.hap.bridge import HomeKitBridge
@@ -131,6 +132,7 @@ class AppComponents:
     bridge_state: _BridgeState
     log_buffer: RingBufferLogHandler = field(default_factory=RingBufferLogHandler)
     stop_event: threading.Event = field(default_factory=threading.Event)
+    backup_scheduler: Optional[BackupScheduler] = None
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +166,7 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
 
     db_path = state_dir / "mappings.db"
     hap_persist = str(state_dir / "hap.state")
+    backup_dir = state_dir / "backups"
 
     # Shared state objects
     bus = EventBus()
@@ -229,7 +232,18 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
         bus=bus,
         log_buffer=log_buffer,
         hap_bridge=hk_bridge,
+        backup_dir=backup_dir,
     )
+
+    # Daily config backup (on by default; BACKUP_ENABLED=false to disable).
+    backup_scheduler = None
+    if settings.backup_enabled:
+        backup_scheduler = BackupScheduler(
+            config_store,
+            backup_dir,
+            retention=settings.backup_retention,
+            stop_event=stop_event,
+        )
 
     return AppComponents(
         app=app,
@@ -243,6 +257,7 @@ def build(fakes: Optional[dict[str, Any]] = None) -> AppComponents:
         bridge_state=bridge_state,
         log_buffer=log_buffer,
         stop_event=stop_event,
+        backup_scheduler=backup_scheduler,
     )
 
 
@@ -270,6 +285,10 @@ def main() -> None:
 
     # Start MQTT (background network loop) — feeds CCU3 + solar events onto the bus
     components.ccu3_adapter.start()
+
+    # Start the daily config-backup thread (if enabled).
+    if components.backup_scheduler is not None:
+        components.backup_scheduler.start()
 
     # Log HAP pairing info
     driver = components.hap_driver

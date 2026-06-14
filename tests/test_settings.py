@@ -6,7 +6,7 @@ from homekit_bridge.settings import Settings
 def test_defaults(monkeypatch):
     for v in (
         "MQTT_HOST", "MQTT_PORT", "WEB_PASSWORD", "HOMEKIT_PIN", "HOMEKIT_MAC",
-        "PV_ENABLED",
+        "PV_ENABLED", "BACKUP_ENABLED", "BACKUP_RETENTION",
     ):
         monkeypatch.delenv(v, raising=False)
     s = Settings.from_env()
@@ -19,6 +19,32 @@ def test_defaults(monkeypatch):
     assert s.homekit_mac is None
     # PV accessories are off by default — the HomeKit representation is unclear.
     assert s.pv_enabled is False
+    # Daily config backup is on by default, keeping 14 snapshots.
+    assert s.backup_enabled is True
+    assert s.backup_retention == 14
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("false", False), ("0", False), ("no", False), ("off", False),
+        ("true", True), ("1", True), ("yes", True), ("on", True), ("", True),
+    ],
+)
+def test_backup_enabled_parsing(monkeypatch, raw, expected):
+    monkeypatch.setenv("BACKUP_ENABLED", raw)
+    assert Settings.from_env().backup_enabled is expected
+
+
+def test_backup_retention_override(monkeypatch):
+    monkeypatch.setenv("BACKUP_RETENTION", "30")
+    assert Settings.from_env().backup_retention == 30
+
+
+def test_backup_retention_invalid_raises(monkeypatch):
+    monkeypatch.setenv("BACKUP_RETENTION", "lots")
+    with pytest.raises(ValueError, match="BACKUP_RETENTION"):
+        Settings.from_env()
 
 
 @pytest.mark.parametrize(
