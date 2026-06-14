@@ -54,6 +54,3 @@ buildrestart:
 	@echo "Buildingg container $(project)"
 	@docker rmi $(project)_$(project)
 	@docker-compose  --file $(project).yaml --project-name $(project) up -d --build
-report:
-	@echo "Updating electricity report webpage"
-	@python3 prometheus_energy_report.py
